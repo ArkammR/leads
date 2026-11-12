@@ -36,6 +36,12 @@ service cloud.firestore {
     match /productCosts/{id} {
       allow read: if isAdmin();
     }
+    match /expenses/{id} {
+      allow read: if isAdmin();
+    }
+    match /remittances/{id} {
+      allow read: if isAdmin();
+    }
     match /notifications/{id} {
       allow read: if isAdmin();
     }

@@ -20,3 +20,9 @@ export const STOCK_REASONS = {
   opening: ["Opening", "gray"], purchase: ["Stock in", "green"], adjustment: ["Adjustment", "amber"],
   sale: ["Sale", "blue"], return: ["Return", "red"],
 };
+
+export const EXPENSE_CATEGORIES = ["Advertising", "Courier", "Packaging", "Salaries", "Commissions", "Rent", "Software", "Other"];
+// When an order counts for revenue: delivery time, falling back to creation for older orders.
+export const orderDate = (o) => ts(o.deliveredAt) || ts(o.createdAt);
+// COD state; Delivered orders from before payment tracking count as collected.
+export const payStatus = (o) => o.payment?.status || (o.status === "Delivered" ? "collected" : "unpaid");

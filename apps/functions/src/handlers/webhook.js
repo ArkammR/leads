@@ -34,6 +34,11 @@ exports.threePLWebhook = onRequest(async (req, res) => {
       changed = true;
       const update = { status: newStatus };
       if (trackingUrl) update.trackingUrl = trackingUrl;
+      if (newStatus === "Delivered") {
+        // Cash on delivery: the courier now holds the money until it remits it (recordRemittance).
+        update.deliveredAt = FieldValue.serverTimestamp();
+        update.payment = { ...(order.payment || { method: "COD" }), status: "collected", collectedAt: FieldValue.serverTimestamp() };
+      }
 
       const restock = ["Failed", "Returned"].includes(newStatus) && order.stockDeducted;
       if (restock) {

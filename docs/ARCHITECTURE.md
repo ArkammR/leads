@@ -36,7 +36,9 @@ Rule of thumb: a feature folder owns its pages and feature-only helpers; anythin
 | `products/{id}` | name, sku, price, stock (on hand), reserved (held by Pending orders), minStockLevel, isActive |
 | `productCosts/{productId}` | costPrice (weighted average; admin-only because agents can read `products`) |
 | `stockMoves/{id}` | productId, name, delta, balance, reason (`opening`\|`purchase`\|`adjustment`\|`sale`\|`return`), by, orderId, unitCost, supplier, note, createdAt |
-| `orders/{id}` | leadId, agentId, customer{name,phone,address}, items[] (unitCost snapshot at verify), total, costTotal, status, stockReserved, stockDeducted, trackingUrl · sub: `history` |
+| `orders/{id}` | leadId, agentId, customer{name,phone,address}, items[] (unitCost snapshot at verify), total, costTotal, payment{method,status `unpaid`\|`collected`\|`remitted`,collectedAt,remittedAt,remittanceId}, deliveredAt, status, stockReserved, stockDeducted, trackingUrl · sub: `history` |
+| `expenses/{id}` | date, category, amount, note, by, isActive (void = setActive) |
+| `remittances/{id}` | orderIds[], amount, reference, note, by, createdAt (courier paid us COD cash) |
 | `alerts/{id}` | type (`low_stock`\|`rma`), resolved, … |
 | `notifications/{id}` | order, phone, body, ok, error (Twilio send log) |
 | `config/roundRobin` | next (cursor) |
@@ -52,5 +54,10 @@ Stock only changes through functions, and each change writes one `stockMoves` en
 opening stock (new product), stock in / adjustment (`adjustStock`, admin), sale (`verifyOrder`) and return (3PL webhook on Failed/Returned).
 `createOrder` reserves units so `available = stock - reserved` can't be oversold; `adjustStock` can't drop stock below `reserved`.
 
+## Finance
+Revenue counts Delivered orders by `deliveredAt`; profit uses the cost snapshot taken at verification. On Delivered the webhook marks
+the COD payment `collected` (cash is with the courier); `recordRemittance` marks orders `remitted` when the courier pays.
+The admin Finance page shows revenue, cost of goods, gross and net profit, expenses, returns and the courier balance for a date range.
+
 ## Callable / HTTP functions
-createUser, setActive, saveProduct, adjustStock, importLeads, updateLeadStatus, createOrder, verifyOrder, resolveAlert, and `threePLWebhook` (POST `/webhook/3pl`, header `x-webhook-secret`).
+createUser, setActive, saveProduct, adjustStock, importLeads, updateLeadStatus, createOrder, verifyOrder, resolveAlert, saveExpense, recordRemittance, and `threePLWebhook` (POST `/webhook/3pl`, header `x-webhook-secret`).

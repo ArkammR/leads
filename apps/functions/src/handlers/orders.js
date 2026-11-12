@@ -40,7 +40,7 @@ exports.createOrder = onCall(async (req) => {
     for (const p of prods) tx.update(p.ref, { reserved: FieldValue.increment(need[p.id]) });
     tx.set(orderRef, {
       leadId, agentId: lead.data().assignedTo, customer: { name: lead.data().name, phone: lead.data().phone, address: address || "" },
-      items: lines, total, status: "Pending", stockDeducted: false, stockReserved: true, trackingUrl: null, createdAt: FieldValue.serverTimestamp(),
+      items: lines, total, status: "Pending", stockDeducted: false, stockReserved: true, trackingUrl: null, payment: { method: "COD", status: "unpaid" }, createdAt: FieldValue.serverTimestamp(),
     });
     tx.set(auditRef(orderRef), auditData(u.uid, null, "Pending", "created, stock reserved"));
     tx.update(leadRef, { status: "Converted", callbackAt: null });

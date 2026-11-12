@@ -15,7 +15,7 @@ exports.createUser = onCall(async (req) => {
 exports.setActive = onCall(async (req) => {
   await requireAdmin(req.auth);
   const { collection, id, isActive } = req.data;
-  if (!["users", "products", "leads"].includes(collection)) throw new HttpsError("invalid-argument", "Bad collection.");
+  if (!["users", "products", "leads", "expenses"].includes(collection)) throw new HttpsError("invalid-argument", "Bad collection.");
   await db.doc(`${collection}/${id}`).update({ isActive: !!isActive });
   if (collection === "users") await admin.auth().updateUser(id, { disabled: !isActive });
   return { ok: true };

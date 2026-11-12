@@ -2,6 +2,7 @@ import DashboardPage from "../features/dashboard/DashboardPage";
 import LeadsPage from "../features/leads/LeadsPage";
 import OrdersPage from "../features/orders/OrdersPage";
 import MyOrdersPage from "../features/orders/MyOrdersPage";
+import FinancePage from "../features/finance/FinancePage";
 import InventoryPage from "../features/inventory/InventoryPage";
 import ProductsPage from "../features/products/ProductsPage";
 import TeamPage from "../features/team/TeamPage";
@@ -14,6 +15,7 @@ export const adminRoutes = [
   { path: "/orders", element: <OrdersPage /> },
   { path: "/products", element: <ProductsPage /> },
   { path: "/inventory", element: <InventoryPage /> },
+  { path: "/finance", element: <FinancePage /> },
   { path: "/users", element: <TeamPage /> },
 ];
 
