@@ -3,7 +3,7 @@ import { collection } from "firebase/firestore";
 import { Banknote, Pencil, Plus, Receipt, TrendingUp, Truck, Undo2, Wallet } from "lucide-react";
 import { api, db } from "../../lib/firebase";
 import { useLive } from "../../hooks/useLive";
-import { Badge, Empty, Field, Modal, PageHead, Stat, useAction } from "../../components/ui";
+import { Badge, Empty, ExportButton, Field, Modal, PageHead, Stat, useAction } from "../../components/ui";
 import RangePicker from "../../components/RangePicker";
 import { EXPENSE_CATEGORIES, RANGE_PRESETS as PRESETS, fmtDate, money, orderDate, payStatus, ts, ymd } from "../../lib/constants";
 
@@ -90,6 +90,7 @@ export default function Finance() {
       <div className="card">
         <div className="toolbar">
           <h2 style={{ flex: 1 }}>Cash with the courier</h2>
+          {!picked && <ExportButton name="courier-owed" rows={owed} columns={[["Order", (o) => o.id], ["Customer", (o) => o.customer.name], ["Phone", (o) => o.customer.phone], ["Delivered", (o) => ts(o.deliveredAt || o.createdAt)], ["Amount", (o) => o.total]]} />}
           {picked ? (
             <>
               <span className="muted">{picked.size} selected · {money(pickedTotal)}</span>
@@ -121,6 +122,7 @@ export default function Finance() {
       <div className="card">
         <div className="toolbar">
           <h2 style={{ flex: 1 }}>Expenses</h2>
+          <ExportButton name="expenses" rows={r.exps} columns={[["Date", (e) => ymd(ts(e.date))], ["Category", (e) => e.category], ["Note", (e) => e.note], ["Amount", (e) => e.amount]]} />
           <button className="btn primary" onClick={() => setExp({ category: "Advertising", amount: "", note: "", date: ymd(new Date()) })}><Plus size={16} />Add expense</button>
         </div>
         {r.exps.length === 0 ? <Empty>No expenses in this range.</Empty> : (

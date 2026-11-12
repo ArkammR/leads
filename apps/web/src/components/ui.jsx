@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useState } from "react";
-import { X } from "lucide-react";
+import { Download, X } from "lucide-react";
+import { downloadCsv } from "../lib/csv";
 import { tone } from "../lib/constants";
 
 /* ---------- toasts ---------- */
@@ -77,3 +78,22 @@ export const Stat = ({ icon: Icon, value, label, color = "" }) => (
     <div><b>{value}</b><span>{label}</span></div>
   </div>
 );
+
+// "Export CSV" button. columns: [[header, row => value], ...] (see lib/csv.js).
+export const ExportButton = ({ name, rows, columns, label = "Export CSV" }) => (
+  <button className="btn" disabled={!rows.length} onClick={() => downloadCsv(name, rows, columns)} title={`Download ${rows.length} rows`}>
+    <Download size={16} />{label}
+  </button>
+);
+
+// Progress toward a target. Renders "—" when no target is set.
+export function Progress({ value, target, format = (n) => n }) {
+  if (!(target > 0)) return <span className="muted">{format(value)} · no target</span>;
+  const pct = Math.round((value / target) * 100);
+  return (
+    <div style={{ minWidth: 120 }}>
+      <div>{format(value)} <span className="muted">/ {format(target)} · {pct}%</span></div>
+      <div className="progress"><i className={pct >= 100 ? "done" : ""} style={{ width: `${Math.min(pct, 100)}%` }} /></div>
+    </div>
+  );
+}

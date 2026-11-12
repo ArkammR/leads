@@ -42,6 +42,13 @@ Rule of thumb: a feature folder owns its pages and feature-only helpers; anythin
 | `alerts/{id}` | type (`low_stock`\|`rma`), resolved, … |
 | `notifications/{id}` | order, phone, body, ok, error (Twilio send log) |
 | `config/roundRobin` | next (cursor) |
+| `attendance/{uid}_{YYYY-MM-DD}` | userId, userName, role, date, sessions[{in,out}], breaks[{start,end}] (ms), state `in`\|`break`\|`out`, workedMin, breakMin, firstIn |
+| `targets/{agentId}_{YYYY-MM}` | agentId, month, orders, delivered, revenue (monthly goals) |
+| `tasks/{id}` | title, details, assignedTo, assignedName, priority `low`\|`normal`\|`high`, dueAt, status `open`\|`done`, doneAt, doneNote, isActive |
+| `announcements/{id}` | title, body, audience `all`\|`agent`\|`admin`, pinned, by, byName, createdAt, isActive |
+| `activity/{id}` | userId, userName, role, action (e.g. `order.verify`), summary, target{type,id}, createdAt (company-wide "who did what") |
+
+`users/{uid}` also holds `presence {state, day, since}` (live clock state) and `announcementsSeenAt` (read marker).
 
 `history` entries: `userId, previousStatus, newStatus, note, timestamp`. Clients cannot write anywhere; only functions (Admin SDK) do, so history is tamper-proof from the app.
 
@@ -65,8 +72,16 @@ The admin Finance page shows revenue, cost of goods, gross and net profit, expen
 On Delivered the webhook fixes the agent's commission on the order (`commission`). Agents see their own results on My performance;
 admins set rates and pay commissions from the Team page (`setCommission`, `payCommissions`, which books a Commissions expense).
 
+## Staff workplace
+- **Attendance**: the sidebar clock calls `clockAction` (in, break, resume, out). A shift past midnight stays on the day it started. Admins see who is working now, can clock out a forgotten shift, and see daily hours and totals.
+- **Targets**: admins set monthly orders / delivered / revenue targets per agent on the Team page (`setTarget`); agents see progress bars on My performance.
+- **Tasks**: admins assign tasks (`saveTask`); the assignee marks them done with an optional note (`setTaskStatus`). Remove with `setActive({collection: "tasks"})`.
+- **Announcements**: admins post (`postAnnouncement`), staff get a nav badge and a banner until they open the page (`markAnnouncementsRead`).
+- **Activity log**: admin actions and order creation write to `activity` (`lib/activity.js`), shown on the Activity log page. Logging never fails the action.
+- **CSV export**: leads, orders, expenses, courier balance, leaderboard, attendance, tasks and the activity log (`lib/csv.js`, `ExportButton`).
+
 ## Callable / HTTP functions
-createUser, setActive, saveProduct, adjustStock, importLeads, updateLeadStatus, createOrder, verifyOrder, resolveAlert, saveExpense, recordRemittance, setCommission, payCommissions, cancelOrder, reassignLeads, and `threePLWebhook` (POST `/webhook/3pl`, header `x-webhook-secret`).
+createUser, setActive, saveProduct, adjustStock, importLeads, updateLeadStatus, createOrder, verifyOrder, resolveAlert, saveExpense, recordRemittance, setCommission, payCommissions, cancelOrder, reassignLeads, clockAction, setTarget, saveTask, setTaskStatus, postAnnouncement, markAnnouncementsRead, and `threePLWebhook` (POST `/webhook/3pl`, header `x-webhook-secret`).
 
 ## Tests
 `cd apps/functions && npm test` runs the handlers against an in-memory Firestore stand-in (`test/handlers.test.js`).

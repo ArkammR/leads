@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { collection, query, where } from "firebase/firestore";
+import { collection, doc, query, where } from "firebase/firestore";
 import { BadgeDollarSign, CheckCircle2, PhoneCall, ShoppingCart, Target, Undo2 } from "lucide-react";
 import { db } from "../../lib/firebase";
 import { useAuth } from "../auth/AuthContext";
-import { useLive } from "../../hooks/useLive";
-import { Badge, Empty, PageHead, Stat } from "../../components/ui";
+import { useLive, useLiveDoc } from "../../hooks/useLive";
+import { Badge, Empty, PageHead, Progress, Stat } from "../../components/ui";
 import RangePicker from "../../components/RangePicker";
-import { RANGE_PRESETS, agentStats, fmtCommission, fmtDate, inRange, money, orderDate, ymd } from "../../lib/constants";
+import { RANGE_PRESETS, TARGET_KEYS, agentStats, fmtCommission, fmtDate, inRange, money, monthRange, orderDate, thisMonth, ymd } from "../../lib/constants";
 
 // Agent's own results and commission. Reads only their own leads, orders and user doc (Firestore rules).
 export default function Performance() {
@@ -15,6 +15,9 @@ export default function Performance() {
   const leads = useLive(() => query(collection(db, "leads"), where("assignedTo", "==", user.uid), where("isActive", "==", true)), [user.uid]).data;
   const [range, setRange] = useState(() => RANGE_PRESETS["This month"]().map(ymd));
 
+  const month = thisMonth();
+  const target = useLiveDoc(() => doc(db, "targets", `${user.uid}_${month}`), [user.uid, month]);
+  const ms = agentStats(orders, monthRange(month));
   const s = agentStats(orders, range);
   const contacted = leads.filter((l) => l.status !== "New").length;
   const converted = leads.filter((l) => l.status === "Converted").length;
@@ -26,6 +29,16 @@ export default function Performance() {
       <PageHead title="My performance" sub={`Your commission: ${fmtCommission(profile.commission)}`}>
         <RangePicker range={range} onChange={setRange} />
       </PageHead>
+      {target && TARGET_KEYS.some(([k]) => target[k] > 0) && (
+        <>
+          <h2 style={{ margin: "0 0 10px" }}>Targets for {month}</h2>
+          <div className="grid targets">
+            {TARGET_KEYS.filter(([k]) => target[k] > 0).map(([k, l]) => (
+              <div key={k} className="card"><div className="muted">{l}</div><Progress value={ms[k]} target={target[k]} format={k === "revenue" ? money : undefined} /></div>
+            ))}
+          </div>
+        </>
+      )}
       <div className="grid stats">
         <Stat icon={PhoneCall} value={`${contacted} / ${leads.length}`} label="Leads contacted (all time)" />
         <Stat icon={Target} value={leads.length ? `${Math.round((converted / leads.length) * 100)}%` : "—"} label="Leads converted to orders" color="green" />
