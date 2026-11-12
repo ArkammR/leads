@@ -1,6 +1,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { db, FieldValue, Timestamp } = require("../lib/firebase");
 const { requireAdmin } = require("../lib/auth");
+const { logActivity } = require("../lib/activity");
 const { auditRef, auditData } = require("../lib/audit");
 
 const EXPENSE_CATEGORIES = ["Advertising", "Courier", "Packaging", "Salaries", "Commissions", "Rent", "Software", "Other"];
@@ -17,6 +18,7 @@ exports.saveExpense = onCall(async (req) => {
   const data = { category, amount: Math.round(amount * 100) / 100, note: String(note || "").slice(0, 300), date: Timestamp.fromMillis(dateMs) };
   if (id) await db.doc(`expenses/${id}`).update({ ...data, updatedBy: u.uid });
   else await db.collection("expenses").add({ ...data, by: u.uid, isActive: true, createdAt: FieldValue.serverTimestamp() });
+  await logActivity(u, id ? "expense.edit" : "expense.create", `${category} ${data.amount}${data.note ? `: ${data.note}` : ""}`);
   return { ok: true };
 });
 
@@ -44,5 +46,6 @@ exports.recordRemittance = onCall(async (req) => {
     tx.set(remRef, { orderIds: snaps.map((s) => s.id), amount: sum, reference: String(reference || ""), note: String(note || ""), by: u.uid, createdAt: FieldValue.serverTimestamp() });
     return sum;
   });
+  await logActivity(u, "remittance.record", `${amount} for ${orderIds.length} orders${reference ? ` (${reference})` : ""}`, { type: "remittance", id: remRef.id });
   return { id: remRef.id, amount };
 });

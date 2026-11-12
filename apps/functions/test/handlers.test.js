@@ -29,7 +29,7 @@ const mocks = {
 };
 const orig = Module._load;
 Module._load = function (req, parent, isMain) { const r = mocks[req] ? req : (() => { try { return Module._resolveFilename(req, parent); } catch { return req; } })(); return mocks[r] || orig.apply(this, arguments); };
-const P = require(FN + "/src/handlers/products.js"), O = require(FN + "/src/handlers/orders.js"), W = require(FN + "/src/handlers/webhook.js"), F = require(FN + "/src/handlers/finance.js"), S = require(FN + "/src/handlers/staff.js"), L = require(FN + "/src/handlers/leads.js");
+const P = require(FN + "/src/handlers/products.js"), O = require(FN + "/src/handlers/orders.js"), W = require(FN + "/src/handlers/webhook.js"), F = require(FN + "/src/handlers/finance.js"), S = require(FN + "/src/handlers/staff.js"), L = require(FN + "/src/handlers/leads.js"), A = require(FN + "/src/handlers/attendance.js"), WP = require(FN + "/src/handlers/workplace.js");
 const admin = { auth: { uid: "a1" } }, agent = { auth: { uid: "g1" } };
 const moves = () => [...store].filter(([k]) => k.startsWith("stockMoves/")).map(([, v]) => v);
 const rejects = async (p, code) => { try { await p; assert.fail("should reject"); } catch (e) { assert.equal(e.code, code, e.message); } };
@@ -108,6 +108,38 @@ const rejects = async (p, code) => { try { await p; assert.fail("should reject")
   const mv = await L.reassignLeads({ ...admin, data: { leadIds: ["L1", "L2", "L3"], agentId: "g2" } });
   assert.equal(mv.moved, 3); assert.equal(store.get("leads/L1").assignedTo, "g2");
   await rejects(L.reassignLeads({ ...admin, data: { leadIds: ["L1"], agentId: "a1" } }), "invalid-argument");
+  // attendance
+  await rejects(A.clockAction({ ...agent, data: { action: "out" } }), "failed-precondition");
+  const c1 = await A.clockAction({ ...agent, data: { action: "in", tzOffsetMin: 0 } });
+  assert.equal(c1.state, "in"); assert.equal(store.get("users/g1").presence.state, "in");
+  await rejects(A.clockAction({ ...agent, data: { action: "in" } }), "failed-precondition");
+  await A.clockAction({ ...agent, data: { action: "break" } });
+  await A.clockAction({ ...agent, data: { action: "resume" } });
+  const att = store.get(`attendance/g1_${c1.day}`);
+  assert.equal(att.sessions.length, 2); assert.equal(att.breaks.length, 1); assert.equal(att.breaks[0].end !== null, true);
+  await rejects(A.clockAction({ ...agent, data: { action: "out", userId: "a1" } }), "permission-denied");
+  await A.clockAction({ ...admin, data: { action: "out", userId: "g1" } });
+  assert.equal(store.get(`attendance/g1_${c1.day}`).state, "out"); assert.equal(store.get("users/g1").presence.state, "out");
+  assert.ok(store.get(`attendance/g1_${c1.day}`).sessions.every((x) => x.out !== null));
+  // targets
+  await WP.setTarget({ ...admin, data: { agentId: "g1", month: "2026-11", orders: "20", delivered: 15, revenue: "1000.5" } });
+  assert.deepEqual([store.get("targets/g1_2026-11").orders, store.get("targets/g1_2026-11").revenue], [20, 1000.5]);
+  await rejects(WP.setTarget({ ...admin, data: { agentId: "g1", month: "2026-13" } }), "invalid-argument");
+  await rejects(WP.setTarget({ ...agent, data: { agentId: "g1", month: "2026-11" } }), "permission-denied");
+  // tasks
+  const t = await WP.saveTask({ ...admin, data: { title: "Call VIPs", assignedTo: "g1", priority: "high", dueAtMs: 5 } });
+  assert.equal(store.get(`tasks/${t.id}`).status, "open");
+  await rejects(WP.setTaskStatus({ ...{ auth: { uid: "g2" } }, data: { id: t.id, status: "done" } }), "permission-denied");
+  await WP.setTaskStatus({ ...agent, data: { id: t.id, status: "done", note: "ok" } });
+  assert.equal(store.get(`tasks/${t.id}`).status, "done");
+  await rejects(WP.saveTask({ ...admin, data: { title: "", assignedTo: "g1" } }), "invalid-argument");
+  // announcements
+  await WP.postAnnouncement({ ...admin, data: { title: "Hi team", body: "x", audience: "agent" } });
+  await rejects(WP.postAnnouncement({ ...agent, data: { title: "x" } }), "permission-denied");
+  await WP.markAnnouncementsRead({ ...agent, data: {} }); assert.equal(store.get("users/g1").announcementsSeenAt, "TS");
+  // activity log
+  const acts = [...store].filter(([k]) => k.startsWith("activity/")).map(([, v]) => v.action);
+  for (const a of ["product.create", "stock.in", "order.verify", "order.cancel", "commission.pay", "leads.reassign", "task.create", "task.done", "announcement.post", "attendance.clockOut"]) assert.ok(acts.includes(a), a);
   console.log(moves().map((m) => `${m.reason}:${m.delta}->${m.balance}`).join(" "));
   console.log("ALL PASS");
 })().catch((e) => { console.error("FAIL", e); process.exit(1); });

@@ -1,6 +1,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { db, FieldValue } = require("../lib/firebase");
 const { requireAdmin } = require("../lib/auth");
+const { logActivity } = require("../lib/activity");
 const { syncLowStockAlert } = require("../services/alerts");
 const { ADJUST_REASONS, stockMove } = require("../lib/stock");
 
@@ -35,6 +36,7 @@ exports.saveProduct = onCall(async (req) => {
     if (cost !== null) tx.set(costRef(ref.id), { costPrice: cost, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   });
   await syncLowStockAlert(ref.id, current.name, current.stock, current.minStockLevel);
+  await logActivity(u, id ? "product.edit" : "product.create", `${name} (price ${data.price})`, { type: "product", id: ref.id });
   return { id: ref.id };
 });
 
@@ -76,5 +78,6 @@ exports.adjustStock = onCall(async (req) => {
     return { ...prod, stock: balance };
   });
   await syncLowStockAlert(productId, p.name, p.stock, p.minStockLevel || 0);
+  await logActivity(u, type === "in" ? "stock.in" : "stock.adjust", `${p.name}: ${qty > 0 ? "+" : ""}${qty} → ${p.stock}${why ? ` (${why})` : ""}`, { type: "product", id: productId });
   return { stock: p.stock };
 });

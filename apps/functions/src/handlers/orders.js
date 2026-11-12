@@ -1,6 +1,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { db, FieldValue } = require("../lib/firebase");
 const { getUser, requireAdmin } = require("../lib/auth");
+const { logActivity } = require("../lib/activity");
 const { auditRef, auditData } = require("../lib/audit");
 const { syncLowStockAlert } = require("../services/alerts");
 const { notify } = require("../services/notify");
@@ -51,6 +52,7 @@ exports.createOrder = onCall(async (req) => {
     tx.update(leadRef, { status: "Converted", callbackAt: null });
     tx.set(auditRef(leadRef), auditData(u.uid, lead.data().status, "Converted", `order ${orderRef.id}`));
   });
+  await logActivity(u, "order.create", `order #${orderRef.id.slice(0, 6)} for ${lead.data().name}`, { type: "order", id: orderRef.id });
   return { orderId: orderRef.id };
 });
 
@@ -93,6 +95,7 @@ exports.verifyOrder = onCall(async (req) => {
   for (const l of lowStock) await syncLowStockAlert(l.id, l.name, l.stock, l.min);
   await notify(orderId, order.customer.phone,
     `Hi ${order.customer.name}, your order #${orderId.slice(0, 6)} (total ${order.total}) is confirmed. We'll message you when it ships.`);
+  await logActivity(u, "order.verify", `order #${orderId.slice(0, 6)} (${order.total})`, { type: "order", id: orderId });
   return { ok: true, lowStock: lowStock.length };
 });
 
@@ -132,5 +135,6 @@ exports.cancelOrder = onCall(async (req) => {
     }
   });
   for (const l of lowStock) await syncLowStockAlert(l.id, l.name, l.stock, l.min);
+  await logActivity(u, "order.cancel", `order #${orderId.slice(0, 6)}${reason ? `: ${reason}` : ""}`, { type: "order", id: orderId });
   return { ok: true };
 });

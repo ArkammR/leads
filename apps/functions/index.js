@@ -8,5 +8,7 @@ Object.assign(
   require("./src/handlers/alerts"),
   require("./src/handlers/finance"),
   require("./src/handlers/staff"),
+  require("./src/handlers/attendance"),
+  require("./src/handlers/workplace"),
   require("./src/handlers/webhook")
 );
