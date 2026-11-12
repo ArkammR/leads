@@ -18,7 +18,8 @@ Until `apps/web/.env` has a project ID the login screen shows a setup notice.
 2. `apps/functions/.env` — fill `TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM` (`whatsapp:+1415…` for WhatsApp or `+1555…` for SMS) and `WEBHOOK_SECRET` (template: `apps/functions/.env.example`). Both `.env` files are gitignored.
 3. `firebase use <project-id>`, then `npm run install:all`, then `npm run deploy` (builds the web app and runs `firebase deploy`).
 4. Create the first admin: add a user in Firebase Auth, then create `users/<uid>` in Firestore with `{role:"admin", isActive:true, name, email}`. Everyone else is created from the Team page.
-5. Point the 3PL at `https://<your-host>/webhook/3pl` (POST, header `x-webhook-secret`, body `{orderId, status, trackingUrl?}`; status: `dispatched | out_for_delivery | delivered | failed | returned`).
+5. Couriers: sign in as admin → **Couriers**, paste each courier's API key (Trans Express: Client Portal → My Profile → API Key; Koombiyo and Curfox couriers such as Royal Express: ask them for merchant API access), switch it on, choose a default courier and fill in the sender details for waybills. Turn on auto-booking to book every order as soon as it's verified. Tracking syncs every 30 minutes (Cloud Scheduler, enabled automatically on deploy).
+6. Optionally point a 3PL at `https://<your-host>/webhook/3pl` (POST, header `x-webhook-secret`, body `{orderId | waybill, status, trackingUrl?}`; status: `dispatched | out_for_delivery | delivered | failed | returned`).
 
 ## Behaviour
 - **Lead import**: phone normalised to digits; duplicates (phone or email) skipped in-file and against existing leads and reported back. Round-robin (persistent cursor) or one-agent assignment.
