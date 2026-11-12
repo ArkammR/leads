@@ -134,3 +134,9 @@ td.actions{text-align:right;white-space:nowrap}
 .side .clock{margin-top:auto}.side .clock + .me{margin-top:12px}
 @media (max-width:820px){.side .clock{margin:0 8px;order:2}}
 .banner .grow{flex:1}
+
+/* lead sources */
+.sources{grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));margin-bottom:18px}
+.grow{flex:1}
+.copyrow{display:flex;gap:8px;align-items:center}.copyrow .input{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:12px}
+.sources details summary{cursor:pointer;font-weight:600}.sources ol{padding-left:20px;margin:8px 0 0}.sources li{margin-bottom:4px}
