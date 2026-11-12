@@ -4,16 +4,9 @@ import { Banknote, Pencil, Plus, Receipt, TrendingUp, Truck, Undo2, Wallet } fro
 import { api, db } from "../../lib/firebase";
 import { useLive } from "../../hooks/useLive";
 import { Badge, Empty, Field, Modal, PageHead, Stat, useAction } from "../../components/ui";
-import { EXPENSE_CATEGORIES, fmtDate, money, orderDate, payStatus, ts } from "../../lib/constants";
+import RangePicker from "../../components/RangePicker";
+import { EXPENSE_CATEGORIES, RANGE_PRESETS as PRESETS, fmtDate, money, orderDate, payStatus, ts, ymd } from "../../lib/constants";
 
-const p2 = (n) => String(n).padStart(2, "0");
-const ymd = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
-const PRESETS = {
-  "This month": () => { const n = new Date(); return [new Date(n.getFullYear(), n.getMonth(), 1), n]; },
-  "Last month": () => { const n = new Date(); return [new Date(n.getFullYear(), n.getMonth() - 1, 1), new Date(n.getFullYear(), n.getMonth(), 0)]; },
-  "Last 30 days": () => [new Date(Date.now() - 29 * 864e5), new Date()],
-  "All time": () => [new Date(2000, 0, 1), new Date()],
-};
 const IN_TRANSIT = ["Verified", "Dispatched", "OutForDelivery"];
 
 export default function Finance() {
@@ -80,12 +73,7 @@ export default function Finance() {
   return (
     <>
       <PageHead title="Finance" sub="Profit from delivered orders, expenses and cash owed by the courier">
-        <select className="select" style={{ width: "auto" }} value="" onChange={(e) => e.target.value && setRange(PRESETS[e.target.value]().map(ymd))}>
-          <option value="">Quick range…</option>
-          {Object.keys(PRESETS).map((k) => <option key={k}>{k}</option>)}
-        </select>
-        <input className="input" style={{ width: "auto" }} type="date" value={range[0]} onChange={(e) => setRange([e.target.value, range[1]])} />
-        <input className="input" style={{ width: "auto" }} type="date" value={range[1]} onChange={(e) => setRange([range[0], e.target.value])} />
+        <RangePicker range={range} onChange={setRange} />
       </PageHead>
 
       <div className="grid stats">

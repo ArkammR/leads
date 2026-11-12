@@ -5,6 +5,7 @@ const { env } = require("../lib/util");
 const { syncLowStockAlert } = require("../services/alerts");
 const { notify } = require("../services/notify");
 const { qtyByProduct, stockMove } = require("../lib/stock");
+const { commissionFor } = require("../lib/commission");
 
 const STATUS_MAP = {
   dispatched: "Dispatched", shipped: "Dispatched",
@@ -38,6 +39,10 @@ exports.threePLWebhook = onRequest(async (req, res) => {
         // Cash on delivery: the courier now holds the money until it remits it (recordRemittance).
         update.deliveredAt = FieldValue.serverTimestamp();
         update.payment = { ...(order.payment || { method: "COD" }), status: "collected", collectedAt: FieldValue.serverTimestamp() };
+        // Commission is fixed at the agent's rate on the day of delivery.
+        const agent = order.agentId ? await tx.get(db.doc(`users/${order.agentId}`)) : null;
+        update.commission = commissionFor(order, agent && agent.exists ? agent.data() : null);
+        update.commissionPaid = false;
       }
 
       const restock = ["Failed", "Returned"].includes(newStatus) && order.stockDeducted;

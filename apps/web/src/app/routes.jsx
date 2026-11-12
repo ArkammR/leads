@@ -4,6 +4,7 @@ import OrdersPage from "../features/orders/OrdersPage";
 import MyOrdersPage from "../features/orders/MyOrdersPage";
 import FinancePage from "../features/finance/FinancePage";
 import InventoryPage from "../features/inventory/InventoryPage";
+import PerformancePage from "../features/performance/PerformancePage";
 import ProductsPage from "../features/products/ProductsPage";
 import TeamPage from "../features/team/TeamPage";
 import QueuePage from "../features/queue/QueuePage";
@@ -22,4 +23,5 @@ export const adminRoutes = [
 export const agentRoutes = [
   { path: "/", element: <QueuePage /> },
   { path: "/orders", element: <MyOrdersPage /> },
+  { path: "/performance", element: <PerformancePage /> },
 ];

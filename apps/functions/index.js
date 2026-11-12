@@ -7,5 +7,6 @@ Object.assign(
   require("./src/handlers/orders"),
   require("./src/handlers/alerts"),
   require("./src/handlers/finance"),
+  require("./src/handlers/staff"),
   require("./src/handlers/webhook")
 );

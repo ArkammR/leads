@@ -26,3 +26,33 @@ export const EXPENSE_CATEGORIES = ["Advertising", "Courier", "Packaging", "Salar
 export const orderDate = (o) => ts(o.deliveredAt) || ts(o.createdAt);
 // COD state; Delivered orders from before payment tracking count as collected.
 export const payStatus = (o) => o.payment?.status || (o.status === "Delivered" ? "collected" : "unpaid");
+
+export const fmtCommission = (c) => (!c || !(c.value > 0) ? "None" : c.type === "percent" ? `${c.value}% of order` : `${money(c.value)} per order`);
+
+// Date range helpers shared by Finance and performance pages.
+const p2 = (n) => String(n).padStart(2, "0");
+export const ymd = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+export const RANGE_PRESETS = {
+  "This month": () => { const n = new Date(); return [new Date(n.getFullYear(), n.getMonth(), 1), n]; },
+  "Last month": () => { const n = new Date(); return [new Date(n.getFullYear(), n.getMonth() - 1, 1), new Date(n.getFullYear(), n.getMonth(), 0)]; },
+  "Last 30 days": () => [new Date(Date.now() - 29 * 864e5), new Date()],
+  "All time": () => [new Date(2000, 0, 1), new Date()],
+};
+export const inRange = (range, d) => !!d && d >= new Date(range[0] + "T00:00:00") && d <= new Date(range[1] + "T23:59:59.999");
+
+// One agent's results for a date range. Orders count by creation date; delivered/commission by delivery date.
+export function agentStats(orders, range) {
+  const created = orders.filter((o) => inRange(range, ts(o.createdAt)));
+  const delivered = orders.filter((o) => o.status === "Delivered" && inRange(range, orderDate(o)));
+  const lost = created.filter((o) => ["Returned", "Failed"].includes(o.status)).length;
+  const closed = created.filter((o) => o.status === "Delivered").length + lost;
+  return {
+    orders: created.length,
+    delivered: delivered.length,
+    lost,
+    deliveryRate: closed ? Math.round((created.filter((o) => o.status === "Delivered").length / closed) * 100) : null,
+    revenue: delivered.reduce((s, o) => s + (o.total || 0), 0),
+    commission: delivered.reduce((s, o) => s + (o.commission || 0), 0),
+    unpaid: orders.filter((o) => o.status === "Delivered" && o.commission > 0 && !o.commissionPaid).reduce((s, o) => s + o.commission, 0),
+  };
+}
