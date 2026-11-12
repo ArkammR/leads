@@ -82,3 +82,25 @@ exports.updateLeadStatus = onCall(async (req) => {
   });
   return { ok: true };
 });
+
+// Admin moves leads to another active agent (e.g. someone left or is overloaded). Existing orders keep their agent.
+exports.reassignLeads = onCall(async (req) => {
+  const u = await requireAdmin(req.auth);
+  const { leadIds, agentId } = req.data;
+  if (!Array.isArray(leadIds) || !leadIds.length || leadIds.length > 2000) throw new HttpsError("invalid-argument", "Pick 1 to 2000 leads.");
+  const a = await db.doc(`users/${agentId}`).get();
+  if (!a.exists || a.data().role !== "agent" || !a.data().isActive) throw new HttpsError("invalid-argument", "Pick an active agent.");
+  let moved = 0;
+  for (const chunk of chunks([...new Set(leadIds)], 200)) {
+    const snaps = await db.getAll(...chunk.map((id) => db.doc(`leads/${id}`)));
+    const batch = db.batch();
+    for (const s of snaps) {
+      if (!s.exists || s.data().assignedTo === agentId) continue;
+      batch.update(s.ref, { assignedTo: agentId });
+      batch.set(auditRef(s.ref), auditData(u.uid, s.data().status, s.data().status, `reassigned to ${a.data().name}`));
+      moved++;
+    }
+    await batch.commit();
+  }
+  return { moved };
+});

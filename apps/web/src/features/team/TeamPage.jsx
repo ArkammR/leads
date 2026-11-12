@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { collection } from "firebase/firestore";
-import { BadgeDollarSign, Plus } from "lucide-react";
-import { api, db } from "../../lib/firebase";
+import { BadgeDollarSign, KeyRound, Plus } from "lucide-react";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { api, auth, db } from "../../lib/firebase";
 import { useAuth } from "../auth/AuthContext";
 import { useLive } from "../../hooks/useLive";
 import { Badge, Empty, Field, Modal, PageHead, useAction, useToast } from "../../components/ui";
@@ -68,6 +69,8 @@ export default function Users() {
                       <><button className="btn sm" onClick={() => setComm({ user: u, type: u.commission?.type || "flat", value: u.commission?.value ?? "" })}>
                         <BadgeDollarSign size={14} />Commission</button>{" "}</>
                     )}
+                    <button className="btn sm" title="Email a password reset link" onClick={() => run(() => sendPasswordResetEmail(auth, u.email), `Reset link sent to ${u.email}`)}>
+                      <KeyRound size={14} />Reset password</button>{" "}
                     {u.id !== profile.id && (
                       <button className="btn sm" onClick={() => run(() => api.setActive({ collection: "users", id: u.id, isActive: !u.isActive }))}>
                         {u.isActive ? "Deactivate" : "Reactivate"}

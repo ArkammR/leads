@@ -31,7 +31,7 @@ exports.threePLWebhook = onRequest(async (req, res) => {
       order = snap.data();
       if (order.status === newStatus) return; // idempotent retry
       if (["Pending"].includes(order.status)) throw new HttpsError("failed-precondition", "order not verified");
-      if (["Delivered", "Returned"].includes(order.status)) throw new HttpsError("failed-precondition", "order closed");
+      if (["Delivered", "Returned", "Cancelled"].includes(order.status)) throw new HttpsError("failed-precondition", "order closed");
       changed = true;
       const update = { status: newStatus };
       if (trackingUrl) update.trackingUrl = trackingUrl;

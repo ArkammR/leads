@@ -9,7 +9,7 @@ export const money = (n) => Number(n || 0).toLocaleString(undefined, { style: "c
 export const tone = (s) =>
   ({
     New: "blue", Called: "gray", "Not Answered": "amber", Hold: "amber", Interested: "green", Converted: "green", "Not Interested": "red",
-    Pending: "amber", Verified: "blue", Dispatched: "blue", OutForDelivery: "blue", Delivered: "green", Failed: "red", Returned: "red",
+    Pending: "amber", Verified: "blue", Dispatched: "blue", OutForDelivery: "blue", Delivered: "green", Failed: "red", Returned: "red", Cancelled: "gray",
   }[s] || "gray");
 
 // Units that can still be sold: on hand minus units reserved by pending orders.

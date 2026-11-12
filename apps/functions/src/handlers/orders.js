@@ -6,6 +6,8 @@ const { syncLowStockAlert } = require("../services/alerts");
 const { notify } = require("../services/notify");
 const { qtyByProduct, stockMove } = require("../lib/stock");
 
+const OPEN_STATUSES = ["Pending", "Verified", "Dispatched", "OutForDelivery"];
+
 exports.createOrder = onCall(async (req) => {
   const u = await getUser(req.auth);
   const { leadId, address, items } = req.data; // items: [{productId, qty}]
@@ -25,6 +27,9 @@ exports.createOrder = onCall(async (req) => {
     const need = qtyByProduct(items.map((it, i) => ({ productId: String(it.productId), qty: qtys[i] })));
     const ids = Object.keys(need);
     const prods = await Promise.all(ids.map((id) => tx.get(db.doc(`products/${id}`))));
+    const existing = await tx.get(db.collection("orders").where("leadId", "==", leadId));
+    const open = existing.docs.find((d) => OPEN_STATUSES.includes(d.data().status));
+    if (open) throw new HttpsError("already-exists", `This lead already has an open order (#${open.id.slice(0, 6)}, ${open.data().status}).`);
     const byId = {};
     for (const p of prods) {
       if (!p.exists || !p.data().isActive) throw new HttpsError("invalid-argument", "Bad item.");
@@ -89,4 +94,43 @@ exports.verifyOrder = onCall(async (req) => {
   await notify(orderId, order.customer.phone,
     `Hi ${order.customer.name}, your order #${orderId.slice(0, 6)} (total ${order.total}) is confirmed. We'll message you when it ships.`);
   return { ok: true, lowStock: lowStock.length };
+});
+
+// Admin cancels an order before the courier has it. Pending releases the reservation;
+// Verified puts the deducted stock back. The lead returns to the agent's queue as Interested.
+exports.cancelOrder = onCall(async (req) => {
+  const u = await requireAdmin(req.auth);
+  const { orderId, reason } = req.data;
+  const ref = db.doc(`orders/${orderId}`);
+  const lowStock = [];
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "Order not found.");
+    const o = snap.data();
+    if (!["Pending", "Verified"].includes(o.status)) throw new HttpsError("failed-precondition", `A ${o.status} order can't be cancelled here.`);
+    const need = qtyByProduct(o.items);
+    const prods = await Promise.all(Object.keys(need).map((id) => tx.get(db.doc(`products/${id}`))));
+    const leadRef = db.doc(`leads/${o.leadId}`);
+    const lead = await tx.get(leadRef);
+    for (const p of prods) {
+      if (!p.exists) continue;
+      const d = p.data();
+      if (o.stockDeducted) {
+        const balance = (d.stock || 0) + need[p.id];
+        tx.update(p.ref, { stock: balance });
+        stockMove(tx, { productId: p.id, name: d.name, delta: need[p.id], balance, reason: "return", by: u.uid, orderId, note: "order cancelled" });
+        lowStock.push({ id: p.id, name: d.name, stock: balance, min: d.minStockLevel || 0 });
+      } else if (o.stockReserved) {
+        tx.update(p.ref, { reserved: Math.max((d.reserved || 0) - need[p.id], 0) });
+      }
+    }
+    tx.update(ref, { status: "Cancelled", stockReserved: false, stockDeducted: false, cancelReason: String(reason || "") });
+    tx.set(auditRef(ref), auditData(u.uid, o.status, "Cancelled", reason || ""));
+    if (lead.exists && lead.data().status === "Converted") {
+      tx.update(leadRef, { status: "Interested" });
+      tx.set(auditRef(leadRef), auditData(u.uid, "Converted", "Interested", `order ${orderId} cancelled`));
+    }
+  });
+  for (const l of lowStock) await syncLowStockAlert(l.id, l.name, l.stock, l.min);
+  return { ok: true };
 });

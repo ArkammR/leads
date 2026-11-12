@@ -47,7 +47,9 @@ Rule of thumb: a feature folder owns its pages and feature-only helpers; anythin
 
 ## Order lifecycle
 `Pending` (agent; stock reserved) → `Verified` (admin; reservation turned into a sale, stock deducted, customer notified) → `Dispatched` → `OutForDelivery` (customer notified) → `Delivered`
-or `Failed` / `Returned` (stock restored once, `rma` alert raised).
+or `Failed` / `Returned` (stock restored once, `rma` alert raised),
+or `Cancelled` (admin, from Pending or Verified; reservation released or stock returned, lead back to Interested).
+A lead can only have one open order (Pending, Verified, Dispatched or OutForDelivery) at a time.
 
 ## Inventory
 Stock only changes through functions, and each change writes one `stockMoves` entry in the same transaction:
@@ -64,4 +66,7 @@ On Delivered the webhook fixes the agent's commission on the order (`commission`
 admins set rates and pay commissions from the Team page (`setCommission`, `payCommissions`, which books a Commissions expense).
 
 ## Callable / HTTP functions
-createUser, setActive, saveProduct, adjustStock, importLeads, updateLeadStatus, createOrder, verifyOrder, resolveAlert, saveExpense, recordRemittance, setCommission, payCommissions, and `threePLWebhook` (POST `/webhook/3pl`, header `x-webhook-secret`).
+createUser, setActive, saveProduct, adjustStock, importLeads, updateLeadStatus, createOrder, verifyOrder, resolveAlert, saveExpense, recordRemittance, setCommission, payCommissions, cancelOrder, reassignLeads, and `threePLWebhook` (POST `/webhook/3pl`, header `x-webhook-secret`).
+
+## Tests
+`cd apps/functions && npm test` runs the handlers against an in-memory Firestore stand-in (`test/handlers.test.js`).
