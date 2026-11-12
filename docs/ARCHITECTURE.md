@@ -33,8 +33,10 @@ Rule of thumb: a feature folder owns its pages and feature-only helpers; anythin
 |---|---|
 | `users/{uid}` | name, email, role (`admin`\|`agent`), isActive |
 | `leads/{id}` | name, phone (digits), email, status, assignedTo, callbackAt, isActive · sub: `history` |
-| `products/{id}` | name, sku, price, stock, minStockLevel, isActive |
-| `orders/{id}` | leadId, agentId, customer{name,phone,address}, items[], total, status, stockDeducted, trackingUrl · sub: `history` |
+| `products/{id}` | name, sku, price, stock (on hand), reserved (held by Pending orders), minStockLevel, isActive |
+| `productCosts/{productId}` | costPrice (weighted average; admin-only because agents can read `products`) |
+| `stockMoves/{id}` | productId, name, delta, balance, reason (`opening`\|`purchase`\|`adjustment`\|`sale`\|`return`), by, orderId, unitCost, supplier, note, createdAt |
+| `orders/{id}` | leadId, agentId, customer{name,phone,address}, items[] (unitCost snapshot at verify), total, costTotal, status, stockReserved, stockDeducted, trackingUrl · sub: `history` |
 | `alerts/{id}` | type (`low_stock`\|`rma`), resolved, … |
 | `notifications/{id}` | order, phone, body, ok, error (Twilio send log) |
 | `config/roundRobin` | next (cursor) |
@@ -42,8 +44,13 @@ Rule of thumb: a feature folder owns its pages and feature-only helpers; anythin
 `history` entries: `userId, previousStatus, newStatus, note, timestamp`. Clients cannot write anywhere; only functions (Admin SDK) do, so history is tamper-proof from the app.
 
 ## Order lifecycle
-`Pending` (agent) → `Verified` (admin; stock deducted, customer notified) → `Dispatched` → `OutForDelivery` (customer notified) → `Delivered`
+`Pending` (agent; stock reserved) → `Verified` (admin; reservation turned into a sale, stock deducted, customer notified) → `Dispatched` → `OutForDelivery` (customer notified) → `Delivered`
 or `Failed` / `Returned` (stock restored once, `rma` alert raised).
 
+## Inventory
+Stock only changes through functions, and each change writes one `stockMoves` entry in the same transaction:
+opening stock (new product), stock in / adjustment (`adjustStock`, admin), sale (`verifyOrder`) and return (3PL webhook on Failed/Returned).
+`createOrder` reserves units so `available = stock - reserved` can't be oversold; `adjustStock` can't drop stock below `reserved`.
+
 ## Callable / HTTP functions
-createUser, setActive, saveProduct, importLeads, updateLeadStatus, createOrder, verifyOrder, resolveAlert, and `threePLWebhook` (POST `/webhook/3pl`, header `x-webhook-secret`).
+createUser, setActive, saveProduct, adjustStock, importLeads, updateLeadStatus, createOrder, verifyOrder, resolveAlert, and `threePLWebhook` (POST `/webhook/3pl`, header `x-webhook-secret`).

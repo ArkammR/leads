@@ -4,6 +4,7 @@ const { getUser, requireAdmin } = require("../lib/auth");
 const { auditRef, auditData } = require("../lib/audit");
 const { syncLowStockAlert } = require("../services/alerts");
 const { notify } = require("../services/notify");
+const { qtyByProduct, stockMove } = require("../lib/stock");
 
 exports.createOrder = onCall(async (req) => {
   const u = await getUser(req.auth);
@@ -14,24 +15,37 @@ exports.createOrder = onCall(async (req) => {
   if (!lead.exists) throw new HttpsError("not-found", "Lead not found.");
   if (u.role !== "admin" && lead.data().assignedTo !== u.uid) throw new HttpsError("permission-denied", "Not your lead.");
 
-  const lines = [];
-  for (const it of items) {
-    const p = await db.doc(`products/${it.productId}`).get();
-    const qty = parseInt(it.qty, 10);
-    if (!p.exists || !p.data().isActive || !(qty > 0)) throw new HttpsError("invalid-argument", "Bad item.");
-    lines.push({ productId: p.id, name: p.data().name, qty, price: p.data().price });
-  }
-  const total = lines.reduce((s, l) => s + l.qty * l.price, 0);
+  const qtys = items.map((it) => parseInt(it.qty, 10));
+  if (qtys.some((q) => !(q > 0))) throw new HttpsError("invalid-argument", "Bad quantity.");
+
+  // Reserve stock in the same transaction that creates the order, so two agents
+  // can't sell the last unit twice. Verification later turns the reservation into a sale.
   const orderRef = db.collection("orders").doc();
-  const batch = db.batch();
-  batch.set(orderRef, {
-    leadId, agentId: lead.data().assignedTo, customer: { name: lead.data().name, phone: lead.data().phone, address: address || "" },
-    items: lines, total, status: "Pending", stockDeducted: false, trackingUrl: null, createdAt: FieldValue.serverTimestamp(),
+  await db.runTransaction(async (tx) => {
+    const need = qtyByProduct(items.map((it, i) => ({ productId: String(it.productId), qty: qtys[i] })));
+    const ids = Object.keys(need);
+    const prods = await Promise.all(ids.map((id) => tx.get(db.doc(`products/${id}`))));
+    const byId = {};
+    for (const p of prods) {
+      if (!p.exists || !p.data().isActive) throw new HttpsError("invalid-argument", "Bad item.");
+      const available = (p.data().stock || 0) - (p.data().reserved || 0);
+      if (available < need[p.id]) throw new HttpsError("failed-precondition", `Only ${Math.max(available, 0)} ${p.data().name} available.`);
+      byId[p.id] = p;
+    }
+    const lines = items.map((it, i) => {
+      const p = byId[String(it.productId)];
+      return { productId: p.id, name: p.data().name, qty: qtys[i], price: p.data().price };
+    });
+    const total = lines.reduce((s, l) => s + l.qty * l.price, 0);
+    for (const p of prods) tx.update(p.ref, { reserved: FieldValue.increment(need[p.id]) });
+    tx.set(orderRef, {
+      leadId, agentId: lead.data().assignedTo, customer: { name: lead.data().name, phone: lead.data().phone, address: address || "" },
+      items: lines, total, status: "Pending", stockDeducted: false, stockReserved: true, trackingUrl: null, createdAt: FieldValue.serverTimestamp(),
+    });
+    tx.set(auditRef(orderRef), auditData(u.uid, null, "Pending", "created, stock reserved"));
+    tx.update(leadRef, { status: "Converted", callbackAt: null });
+    tx.set(auditRef(leadRef), auditData(u.uid, lead.data().status, "Converted", `order ${orderRef.id}`));
   });
-  batch.set(auditRef(orderRef), auditData(u.uid, null, "Pending", "created"));
-  batch.update(leadRef, { status: "Converted", callbackAt: null });
-  batch.set(auditRef(leadRef), auditData(u.uid, lead.data().status, "Converted", `order ${orderRef.id}`));
-  await batch.commit();
   return { orderId: orderRef.id };
 });
 
@@ -46,21 +60,28 @@ exports.verifyOrder = onCall(async (req) => {
     const o = snap.data();
     if (o.status !== "Pending") throw new HttpsError("failed-precondition", `Order is ${o.status}.`);
     // all reads before writes
-    const prodRefs = o.items.map((i) => db.doc(`products/${i.productId}`));
-    const prods = await Promise.all(prodRefs.map((r) => tx.get(r)));
-    const need = {};
-    o.items.forEach((i) => (need[i.productId] = (need[i.productId] || 0) + i.qty));
+    const need = qtyByProduct(o.items);
+    const ids = Object.keys(need);
+    const prods = await Promise.all(ids.map((id) => tx.get(db.doc(`products/${id}`))));
+    const costs = await Promise.all(ids.map((id) => tx.get(db.doc(`productCosts/${id}`))));
     for (const p of prods) {
       if (!p.exists || p.data().stock < need[p.id]) throw new HttpsError("failed-precondition", `Insufficient stock: ${p.data()?.name || p.id}`);
     }
-    const done = new Set();
+    const unitCost = {};
+    ids.forEach((id, i) => (unitCost[id] = costs[i].exists ? costs[i].data().costPrice : null));
     for (const p of prods) {
-      if (done.has(p.id)) continue; done.add(p.id);
       const newStock = p.data().stock - need[p.id];
-      tx.update(p.ref, { stock: newStock });
+      const upd = { stock: newStock };
+      // Orders created before reservations existed have nothing to release.
+      if (o.stockReserved) upd.reserved = Math.max((p.data().reserved || 0) - need[p.id], 0);
+      tx.update(p.ref, upd);
+      stockMove(tx, { productId: p.id, name: p.data().name, delta: -need[p.id], balance: newStock, reason: "sale", by: u.uid, orderId, unitCost: unitCost[p.id] });
       if (newStock <= (p.data().minStockLevel || 0)) lowStock.push({ id: p.id, name: p.data().name, stock: newStock, min: p.data().minStockLevel || 0 });
     }
-    tx.update(ref, { status: "Verified", stockDeducted: true });
+    // Snapshot cost at the moment of sale so profit stays correct when costs change later.
+    const items = o.items.map((i) => ({ ...i, unitCost: unitCost[i.productId] }));
+    const costTotal = items.every((i) => i.unitCost !== null) ? items.reduce((s, i) => s + i.qty * i.unitCost, 0) : null;
+    tx.update(ref, { status: "Verified", stockDeducted: true, stockReserved: false, items, costTotal });
     tx.set(auditRef(ref), auditData(u.uid, "Pending", "Verified", "stock deducted"));
     return o;
   });

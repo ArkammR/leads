@@ -4,6 +4,7 @@ const { auditRef, auditData } = require("../lib/audit");
 const { env } = require("../lib/util");
 const { syncLowStockAlert } = require("../services/alerts");
 const { notify } = require("../services/notify");
+const { qtyByProduct, stockMove } = require("../lib/stock");
 
 const STATUS_MAP = {
   dispatched: "Dispatched", shipped: "Dispatched",
@@ -34,17 +35,17 @@ exports.threePLWebhook = onRequest(async (req, res) => {
       const update = { status: newStatus };
       if (trackingUrl) update.trackingUrl = trackingUrl;
 
-      let prods = [];
       const restock = ["Failed", "Returned"].includes(newStatus) && order.stockDeducted;
-      if (restock) prods = await Promise.all(order.items.map((i) => tx.get(db.doc(`products/${i.productId}`))));
-
       if (restock) {
-        order.items.forEach((i, idx) => {
-          const p = prods[idx];
-          if (!p.exists) return;
-          tx.update(p.ref, { stock: FieldValue.increment(i.qty) });
-          restocked.push({ id: p.id, name: i.name, qty: i.qty });
-        });
+        const need = qtyByProduct(order.items);
+        const prods = await Promise.all(Object.keys(need).map((id) => tx.get(db.doc(`products/${id}`))));
+        for (const p of prods) {
+          if (!p.exists) continue;
+          const balance = (p.data().stock || 0) + need[p.id];
+          tx.update(p.ref, { stock: balance });
+          stockMove(tx, { productId: p.id, name: p.data().name, delta: need[p.id], balance, reason: "return", by: "3pl-webhook", orderId, note: newStatus.toLowerCase() });
+          restocked.push({ id: p.id, name: p.data().name, qty: need[p.id] });
+        }
         update.stockDeducted = false; // guards against double restock
       }
       tx.update(ref, update);
