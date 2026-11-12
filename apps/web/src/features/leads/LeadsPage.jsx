@@ -6,7 +6,8 @@ import { useLive } from "../../hooks/useLive";
 import { Badge, Empty, ExportButton, Field, Modal, PageHead, useAction, useToast } from "../../components/ui";
 import HistoryModal from "../../components/HistoryModal";
 import { fmtDate, ts } from "../../lib/constants";
-import { parseCsv } from "./parseCsv";
+import { parseLeadFile } from "./parseCsv";
+import { SOURCE_LABEL } from "../leadSources/sources";
 
 export default function Leads() {
   const run = useAction();
@@ -24,19 +25,22 @@ export default function Leads() {
   const [sel, setSel] = useState(() => new Set());
   const [agentFilter, setAgentFilter] = useState("");
   const [move, setMove] = useState(null); // target agentId
+  const [srcFilter, setSrcFilter] = useState("");
 
   const rows = useMemo(() => {
     const s = q.toLowerCase();
     return leads.data
-      .filter((l) => !agentFilter || l.assignedTo === agentFilter)
+      .filter((l) => !agentFilter || (agentFilter === "none" ? !l.assignedTo : l.assignedTo === agentFilter))
+      .filter((l) => !srcFilter || (l.source || "csv") === srcFilter)
       .filter((l) => !s || [l.name, l.phone, l.email].some((v) => (v || "").toLowerCase().includes(s)))
       .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-  }, [leads.data, q, agentFilter]);
+  }, [leads.data, q, agentFilter, srcFilter]);
 
   const pick = async (e) => {
     const f = e.target.files[0];
     if (!f) return;
-    const parsed = parseCsv(await f.text());
+    let parsed;
+    try { parsed = await parseLeadFile(f); } catch (err) { return toast(err.message || "Could not read that file", "err"); }
     if (!parsed.length) return toast("No rows found in that file", "err");
     setImp({ rows: parsed, mode: "roundRobin", agentId: agents[0]?.id || "", fileName: f.name });
   };
@@ -61,15 +65,15 @@ export default function Leads() {
 
   return (
     <>
-      <PageHead title="Leads" sub="Upload a CSV (name, phone, email). Duplicates are skipped automatically.">
+      <PageHead title="Leads" sub="Upload a CSV or Excel file (name, phone, email), or connect platforms under Lead sources. Duplicates are skipped automatically.">
         <ExportButton name="leads" rows={rows} columns={[
           ["Name", (l) => l.name], ["Phone", (l) => l.phone], ["Email", (l) => l.email], ["Status", (l) => l.status],
-          ["Agent", (l) => uname(l.assignedTo)], ["Callback", (l) => ts(l.callbackAt)], ["Last contacted", (l) => ts(l.lastContactedAt)],
+          ["Agent", (l) => uname(l.assignedTo)], ["Source", (l) => SOURCE_LABEL[l.source || "csv"]], ["Channel", (l) => l.channel || ""], ["Callback", (l) => ts(l.callbackAt)], ["Last contacted", (l) => ts(l.lastContactedAt)],
           ["Created", (l) => ts(l.createdAt)], ["Active", (l) => (l.isActive === false ? "no" : "yes")],
         ]} />
         <label className="btn primary" style={{ cursor: "pointer" }}>
-          <Upload size={16} />Import CSV
-          <input type="file" accept=".csv,text/csv" hidden onChange={(e) => { pick(e); e.target.value = ""; }} />
+          <Upload size={16} />Import CSV / Excel
+          <input type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(e) => { pick(e); e.target.value = ""; }} />
         </label>
       </PageHead>
 
@@ -79,21 +83,27 @@ export default function Leads() {
           <select className="select" style={{ width: "auto" }} value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
             <option value="">All agents</option>
             {users.filter((u) => u.role === "agent").map((u) => <option key={u.id} value={u.id}>{u.name}{u.isActive ? "" : " (inactive)"}</option>)}
+            <option value="none">Unassigned</option>
+          </select>
+          <select className="select" style={{ width: "auto" }} value={srcFilter} onChange={(e) => setSrcFilter(e.target.value)}>
+            <option value="">All sources</option>
+            {Object.entries(SOURCE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
           <span className="muted">{rows.length} leads</span>
           {sel.size > 0 && (
             <button className="btn primary" onClick={() => setMove(agents[0]?.id || "")}><UserRoundCog size={16} />Reassign {sel.size}</button>
           )}
         </div>
-        {!leads.loading && rows.length === 0 ? <Empty>No leads yet. Import a CSV to get started.</Empty> : (
+        {!leads.loading && rows.length === 0 ? <Empty>No leads yet. Import a CSV or Excel file, or connect a lead source.</Empty> : (
           <div className="tablewrap"><table>
-            <thead><tr><th><input type="checkbox" aria-label="Select all" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(rows.map((l) => l.id)))} /></th><th>Name</th><th>Phone</th><th>Status</th><th>Agent</th><th>Callback</th><th /></tr></thead>
+            <thead><tr><th><input type="checkbox" aria-label="Select all" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(rows.map((l) => l.id)))} /></th><th>Name</th><th>Phone</th><th>Source</th><th>Status</th><th>Agent</th><th>Callback</th><th /></tr></thead>
             <tbody>
               {rows.map((l) => (
                 <tr key={l.id} className={l.isActive ? "" : "inactive"}>
                   <td><input type="checkbox" aria-label="Select" checked={sel.has(l.id)} onChange={() => toggle(l.id)} /></td>
                   <td><b>{l.name || "—"}</b><div className="muted">{l.email}</div></td>
                   <td>{l.phone}</td>
+                  <td><Badge color="gray">{l.channel === "instagram" ? "Instagram" : SOURCE_LABEL[l.source || "csv"]}</Badge>{l.enquiries > 0 && <div className="muted">+{l.enquiries} repeat</div>}</td>
                   <td><Badge>{l.status}</Badge></td>
                   <td>{uname(l.assignedTo)}</td>
                   <td>{fmtDate(l.callbackAt)}</td>
@@ -150,7 +160,7 @@ export default function Leads() {
           <p><b>{result.created}</b> leads created, <b>{result.duplicates.length}</b> skipped.</p>
           {result.duplicates.length > 0 && (
             <div className="tablewrap"><table>
-              <thead><tr><th><input type="checkbox" aria-label="Select all" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(rows.map((l) => l.id)))} /></th><th>Name</th><th>Phone</th><th>Reason</th></tr></thead>
+              <thead><tr><th>Name</th><th>Phone</th><th>Reason</th></tr></thead>
               <tbody>{result.duplicates.map((d, i) => <tr key={i}><td>{d.name}</td><td>{d.phone}</td><td>{d.reason}</td></tr>)}</tbody>
             </table></div>
           )}

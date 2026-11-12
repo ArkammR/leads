@@ -5,6 +5,9 @@
     "public": "apps/web/dist",
     "rewrites": [
       { "source": "/webhook/3pl", "function": "threePLWebhook" },
+      { "source": "/webhook/leads/**", "function": "leadsWebhook" },
+      { "source": "/webhook/meta", "function": "metaWebhook" },
+      { "source": "/oauth/meta", "function": "metaOAuth" },
       { "source": "**", "destination": "/index.html" }
     ]
   }

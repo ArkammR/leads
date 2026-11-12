@@ -57,6 +57,13 @@ service cloud.firestore {
     match /tasks/{id} {
       allow read: if isAdmin() || (isAgent() && resource.data.assignedTo == request.auth.uid);
     }
+    // Connected lead platforms. Page access tokens live in leadSourceSecrets, which no client can read.
+    match /leadSources/{id} {
+      allow read: if isAdmin();
+    }
+    match /leadEvents/{id} {
+      allow read: if isAdmin();
+    }
     match /announcements/{id} {
       allow read: if isAdmin() || isAgent();
     }
