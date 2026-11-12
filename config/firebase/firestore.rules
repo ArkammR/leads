@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+    function me() { return get(/databases/$(db)/documents/users/$(request.auth.uid)).data; }
+    function isAdmin() { return signedIn() && me().role == 'admin' && me().isActive == true; }
+    function isAgent() { return signedIn() && me().role == 'agent' && me().isActive == true; }
+
+    // ALL writes go through Cloud Functions (Admin SDK bypasses rules).
+    // Clients are read-only, which also makes audit `history` immutable.
+
+    match /users/{id} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == id);
+    }
+    match /products/{id} {
+      allow read: if isAdmin() || isAgent();
+    }
+    match /leads/{id} {
+      allow read: if isAdmin() || (isAgent() && resource.data.assignedTo == request.auth.uid);
+      match /history/{h} {
+        allow read: if isAdmin();
+      }
+    }
+    match /orders/{id} {
+      allow read: if isAdmin() || (isAgent() && resource.data.agentId == request.auth.uid);
+      match /history/{h} {
+        allow read: if isAdmin();
+      }
+    }
+    match /alerts/{id} {
+      allow read: if isAdmin();
+    }
+    match /notifications/{id} {
+      allow read: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "firestore": { "rules": "config/firebase/firestore.rules", "indexes": "config/firebase/firestore.indexes.json" },
+  "functions": [{ "source": "apps/functions", "codebase": "default" }],
+  "hosting": {
+    "public": "apps/web/dist",
+    "rewrites": [
+      { "source": "/webhook/3pl", "function": "threePLWebhook" },
+      { "source": "**", "destination": "/index.html" }
+    ]
+  }
+}

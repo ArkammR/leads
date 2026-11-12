@@ -1,0 +1,12 @@
+{
+  "name": "leads",
+  "private": true,
+  "description": "Leads CRM + ERP (Firebase + React). Each app keeps its own dependencies; this file only provides shortcuts.",
+  "scripts": {
+    "install:all": "npm --prefix apps/web install && npm --prefix apps/functions install",
+    "dev": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "lint": "npm --prefix apps/web run lint",
+    "deploy": "npm run build && firebase deploy"
+  }
+}
