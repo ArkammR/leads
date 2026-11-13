@@ -12,12 +12,14 @@ import AttendancePage from "../features/attendance/AttendancePage";
 import TasksPage from "../features/tasks/TasksPage";
 import AnnouncementsPage from "../features/announcements/AnnouncementsPage";
 import ActivityPage from "../features/activity/ActivityPage";
+import CouriersPage from "../features/couriers/CouriersPage";
 
 // Role-scoped route tables. (Firestore rules and Cloud Functions enforce access; this only shapes the UI.)
 export const adminRoutes = [
   { path: "/", element: <DashboardPage /> },
   { path: "/leads", element: <LeadsPage /> },
   { path: "/orders", element: <OrdersPage /> },
+  { path: "/couriers", element: <CouriersPage /> },
   { path: "/products", element: <ProductsPage /> },
   { path: "/inventory", element: <InventoryPage /> },
   { path: "/finance", element: <FinancePage /> },
