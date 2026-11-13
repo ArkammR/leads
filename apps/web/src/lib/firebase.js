@@ -33,6 +33,7 @@ export { auth, db };
 const call = (name) => async (data) => (await httpsCallable(fns, name)(data)).data;
 export const api = Object.fromEntries(
   ["createUser", "setActive", "saveProduct", "adjustStock", "importLeads", "updateLeadStatus", "createOrder", "verifyOrder", "resolveAlert", "saveExpense", "recordRemittance", "setCommission", "payCommissions", "cancelOrder", "reassignLeads",
-    "clockAction", "setTarget", "saveTask", "setTaskStatus", "postAnnouncement", "markAnnouncementsRead", "saveLeadSource", "rotateLeadSourceKey", "startMetaConnect"]
+    "clockAction", "setTarget", "saveTask", "setTaskStatus", "postAnnouncement", "markAnnouncementsRead",
+    "listCouriers", "saveCourierConfig", "saveShippingSettings", "updateShipTo", "bookShipments", "clearShipment", "syncShipments", "setShipmentStatus", "markWaybillsPrinted", "saveLeadSource", "rotateLeadSourceKey", "startMetaConnect"]
     .map((n) => [n, call(n)])
 );

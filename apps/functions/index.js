@@ -11,5 +11,6 @@ Object.assign(
   require("./src/handlers/staff"),
   require("./src/handlers/attendance"),
   require("./src/handlers/workplace"),
+  require("./src/handlers/shipping"),
   require("./src/handlers/webhook")
 );

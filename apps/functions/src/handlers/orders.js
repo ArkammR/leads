@@ -6,12 +6,15 @@ const { auditRef, auditData } = require("../lib/audit");
 const { syncLowStockAlert } = require("../services/alerts");
 const { notify } = require("../services/notify");
 const { qtyByProduct, stockMove } = require("../lib/stock");
+const { shippingSettings, bookOne } = require("../services/shipping");
+const { BY_ID } = require("../couriers");
 
 const OPEN_STATUSES = ["Pending", "Verified", "Dispatched", "OutForDelivery"];
 
 exports.createOrder = onCall(async (req) => {
   const u = await getUser(req.auth);
   const { leadId, address, items } = req.data; // items: [{productId, qty}]
+  const ship = (k, n = 60) => String(req.data[k] || "").trim().slice(0, n); // courier delivery details
   if (!Array.isArray(items) || !items.length) throw new HttpsError("invalid-argument", "No items.");
   const leadRef = db.doc(`leads/${leadId}`);
   const lead = await leadRef.get();
@@ -45,7 +48,7 @@ exports.createOrder = onCall(async (req) => {
     const total = lines.reduce((s, l) => s + l.qty * l.price, 0);
     for (const p of prods) tx.update(p.ref, { reserved: FieldValue.increment(need[p.id]) });
     tx.set(orderRef, {
-      leadId, agentId: lead.data().assignedTo, customer: { name: lead.data().name, phone: lead.data().phone, address: address || "" },
+      leadId, agentId: lead.data().assignedTo, customer: { name: lead.data().name, phone: lead.data().phone, address: String(address || "").slice(0, 300), district: ship("district"), city: ship("city"), phone2: ship("phone2", 20) },
       items: lines, total, status: "Pending", stockDeducted: false, stockReserved: true, trackingUrl: null, payment: { method: "COD", status: "unpaid" }, createdAt: FieldValue.serverTimestamp(),
     });
     tx.set(auditRef(orderRef), auditData(u.uid, null, "Pending", "created, stock reserved"));
@@ -96,7 +99,15 @@ exports.verifyOrder = onCall(async (req) => {
   await notify(orderId, order.customer.phone,
     `Hi ${order.customer.name}, your order #${orderId.slice(0, 6)} (total ${order.total}) is confirmed. We'll message you when it ships.`);
   await logActivity(u, "order.verify", `order #${orderId.slice(0, 6)} (${order.total})`, { type: "order", id: orderId });
-  return { ok: true, lowStock: lowStock.length };
+  // Auto-book with the default courier when switched on. A courier problem never undoes the verification;
+  // it shows on the order so the admin can fix the address and book again.
+  let booking = null;
+  const settings = await shippingSettings();
+  if (settings.autoBook && BY_ID[settings.defaultCourier]?.api) {
+    try { booking = await bookOne(orderId, settings.defaultCourier, u.uid); }
+    catch (e) { booking = { orderId, ok: false, error: e.message }; }
+  }
+  return { ok: true, lowStock: lowStock.length, booking };
 });
 
 // Admin cancels an order before the courier has it. Pending releases the reservation;
@@ -111,6 +122,9 @@ exports.cancelOrder = onCall(async (req) => {
     if (!snap.exists) throw new HttpsError("not-found", "Order not found.");
     const o = snap.data();
     if (!["Pending", "Verified"].includes(o.status)) throw new HttpsError("failed-precondition", `A ${o.status} order can't be cancelled here.`);
+    if (o.shipment?.state === "booked" && BY_ID[o.shipment.courier]?.api) {
+      throw new HttpsError("failed-precondition", `Booked with ${o.shipment.courierName} (waybill ${o.shipment.waybill}). Cancel it with the courier, remove the waybill, then cancel the order.`);
+    }
     const need = qtyByProduct(o.items);
     const prods = await Promise.all(Object.keys(need).map((id) => tx.get(db.doc(`products/${id}`))));
     const leadRef = db.doc(`leads/${o.leadId}`);

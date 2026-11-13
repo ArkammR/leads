@@ -2,7 +2,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { collection, query, where } from "firebase/firestore";
 import {
   LayoutDashboard, Users, Package, ShoppingCart, PhoneCall, UserCog, LogOut, Zap, Boxes, Wallet, TrendingUp,
-  Clock, ListChecks, Megaphone, ScrollText, Plug,
+  Clock, ListChecks, Megaphone, ScrollText, Plug, Truck,
 } from "lucide-react";
 import { useAuth } from "../features/auth/AuthContext";
 import ClockWidget from "../features/attendance/ClockWidget";
@@ -16,6 +16,7 @@ const ADMIN_NAV = [
   { to: "/leads", label: "Leads", icon: Users },
   { to: "/lead-sources", label: "Lead sources", icon: Plug },
   { to: "/orders", label: "Orders", icon: ShoppingCart },
+  { to: "/couriers", label: "Couriers", icon: Truck },
   { to: "/products", label: "Products", icon: Package },
   { to: "/inventory", label: "Inventory", icon: Boxes },
   { to: "/finance", label: "Finance", icon: Wallet },

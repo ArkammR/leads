@@ -40,10 +40,13 @@ Rule of thumb: a feature folder owns its pages and feature-only helpers; anythin
 | `products/{id}` | name, sku, price, stock (on hand), reserved (held by Pending orders), minStockLevel, isActive |
 | `productCosts/{productId}` | costPrice (weighted average; admin-only because agents can read `products`) |
 | `stockMoves/{id}` | productId, name, delta, balance, reason (`opening`\|`purchase`\|`adjustment`\|`sale`\|`return`), by, orderId, unitCost, supplier, note, createdAt |
-| `orders/{id}` | leadId, agentId, customer{name,phone,address}, items[] (unitCost snapshot at verify), total, costTotal, payment{method,status `unpaid`\|`collected`\|`remitted`,collectedAt,remittedAt,remittanceId}, deliveredAt, commission, commissionPaid, status, stockReserved, stockDeducted, trackingUrl · sub: `history` |
+| `orders/{id}` | leadId, agentId, customer{name,phone,phone2,address,district,city}, shipment{state `booking`\|`booked`\|`error`, courier, courierName, waybill, trackingUrl, courierStatus, bookedAt, printedAt, error, syncError}, shipNote, weight, items[] (unitCost snapshot at verify), total, costTotal, payment{method,status `unpaid`\|`collected`\|`remitted`,collectedAt,remittedAt,remittanceId}, deliveredAt, commission, commissionPaid, status, stockReserved, stockDeducted, trackingUrl · sub: `history` |
 | `expenses/{id}` | date, category, amount, note, by, isActive (void = setActive) |
 | `remittances/{id}` | orderIds[], amount, reference, note, by, createdAt (courier paid us COD cash) |
 | `alerts/{id}` | type (`low_stock`\|`rma`), resolved, … |
+| `courierConfigs/{courierId}` | enabled, values{} (non-secret courier settings, admin-readable) |
+| `courierSecrets/{courierId}` | API keys/tokens; no client access at all, only functions read them |
+| `settings/shipping` | defaultCourier, autoBook, currency, sender{name,phone,address,note} (printed on waybills) |
 | `notifications/{id}` | order, phone, body, ok, error (Twilio send log) |
 | `config/roundRobin` | next (cursor) |
 | `attendance/{uid}_{YYYY-MM-DD}` | userId, userName, role, date, sessions[{in,out}], breaks[{start,end}] (ms), state `in`\|`break`\|`out`, workedMin, breakMin, firstIn |
@@ -97,3 +100,20 @@ createUser, setActive, saveProduct, adjustStock, importLeads, updateLeadStatus, 
 
 ## Tests
 `cd apps/functions && npm test` runs the handlers against an in-memory Firestore stand-in (`test/handlers.test.js`).
+
+## Couriers and waybills
+Each courier is one adapter in `apps/functions/src/couriers/` with `book()` (create the consignment, return the waybill) and,
+when the courier has a tracking API, `track()`. Built in: **Trans Express** (Bearer API key), **Koombiyo** (API key; waybill numbers
+allocated by Koombiyo, district/city mapped to Koombiyo ids), **Curfox** platform couriers such as Royal Express (token + tenant),
+and **Other courier (no API)** for Domex, Fardar, Prompt Xpress, Pronto etc., where the admin types the waybill and sets the status.
+Admins fill in keys on the Couriers page (`saveCourierConfig`); secrets go to `courierSecrets`, which clients can never read.
+
+Flow: agents capture district and city with the order. When an admin verifies it, the order is booked with the default courier if
+auto-booking is on (`settings/shipping`), otherwise from the Orders page (`bookShipments`, single or bulk). A booking is locked first so it
+can't create two waybills; a courier rejection is stored on `shipment.error` so the admin can fix the address (`updateShipTo`) and retry.
+`scheduledShipmentSync` (every 30 minutes, also `syncShipments` on demand) asks couriers for status and moves orders forward only
+(Dispatched → OutForDelivery → Delivered, or Returned) through the same code as the webhook (`lib/orderStatus.js`). Failed delivery
+attempts don't change the order because couriers re-attempt. The webhook also accepts `waybill` instead of `orderId`.
+
+Waybills print from the Orders page (one or many): A4 with 4 labels per page or 4×6 in label printers, with a Code 128 barcode of
+the courier waybill (or the order reference when there is none), COD amount, receiver, contents and sender.

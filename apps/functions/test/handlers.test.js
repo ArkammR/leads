@@ -8,7 +8,8 @@ const apply = (old, data) => { const o = { ...(old || {}) }; for (const [k, v] o
 function ref(p) { return { path: p, id: p.split("/").pop(),
   collection: (c) => col(`${p}/${c}`),
   get: async () => snap(p), set: async (d, o) => set(p, d, o), update: async (d) => upd(p, d), delete: async () => store.delete(p) }; }
-const match = (d, [f, op, v]) => op === "in" ? v.includes(d[f]) : op === "array-contains" ? (d[f] || []).includes(v) : d[f] === v;
+const dig = (d, f) => f.split(".").reduce((o, k) => (o == null ? o : o[k]), d);
+const match = (d, [f, op, v]) => op === "in" ? v.includes(dig(d, f)) : op === "array-contains" ? (dig(d, f) || []).includes(v) : dig(d, f) === v;
 function qry(c, filters) { const docs = () => [...store].filter(([k, d]) => k.startsWith(c + "/") && k.split("/").length === c.split("/").length + 1 && filters.every((x) => match(d, x))).map(([k]) => snap(k));
   return { isQuery: true, where: (f, op, v) => qry(c, [...filters, [f, op, v]]), docs, get: async () => { const ds = docs(); return { docs: ds, forEach: (fn) => ds.forEach(fn) }; } }; }
 function col(c) { return { where: (f, op, v) => qry(c, [[f, op, v]]), doc: (id) => ref(`${c}/${id || "auto" + ++idc}`), add: async (d) => { const r = ref(`${c}/auto${++idc}`); set(r.path, d); return r; } }; }
@@ -25,12 +26,29 @@ const db = { doc: ref, collection: col,
 class HttpsError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
 const mocks = {
   "firebase-functions/v2/https": { onCall: (h) => h, onRequest: (h) => h, HttpsError },
+  "firebase-functions/v2/scheduler": { onSchedule: (o, h) => h },
   [path.join(FN, "src/lib/firebase.js")]: { db, FieldValue, Timestamp: { fromMillis: (m) => ({ ms: m }), now: () => ({ ms: Date.now() }) }, admin: {} },
   [path.join(FN, "src/services/notify.js")]: { notify: async () => {} },
 };
 const orig = Module._load;
 Module._load = function (req, parent, isMain) { const r = mocks[req] ? req : (() => { try { return Module._resolveFilename(req, parent); } catch { return req; } })(); return mocks[r] || orig.apply(this, arguments); };
-const P = require(FN + "/src/handlers/products.js"), O = require(FN + "/src/handlers/orders.js"), W = require(FN + "/src/handlers/webhook.js"), F = require(FN + "/src/handlers/finance.js"), S = require(FN + "/src/handlers/staff.js"), L = require(FN + "/src/handlers/leads.js"), A = require(FN + "/src/handlers/attendance.js"), WP = require(FN + "/src/handlers/workplace.js"), LS = require(FN + "/src/handlers/leadSources.js");
+const P = require(FN + "/src/handlers/products.js"), O = require(FN + "/src/handlers/orders.js"), W = require(FN + "/src/handlers/webhook.js"), F = require(FN + "/src/handlers/finance.js"), S = require(FN + "/src/handlers/staff.js"), L = require(FN + "/src/handlers/leads.js"), A = require(FN + "/src/handlers/attendance.js"), WP = require(FN + "/src/handlers/workplace.js"), LS = require(FN + "/src/handlers/leadSources.js"), SH = require(FN + "/src/handlers/shipping.js");
+const { mapCourierStatus } = require(FN + "/src/couriers/status.js");
+// Fake courier APIs: records requests, answers by URL.
+const calls = []; let trackStatus = "Processing";
+global.fetch = async (url, init) => {
+  calls.push({ url, init });
+  const json = (b, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(b) });
+  if (url.endsWith("/orders/upload/single-auto-without-city")) {
+    const b = JSON.parse(init.body);
+    return b.city === "Nowhere" ? json({ message: "Invalid city" }, 422) : json({ success: "Record successfully added", order: { waybill_id: "TE000001" } });
+  }
+  if (url.endsWith("/tracking")) return json({ data: { current_status: trackStatus } });
+  if (url.endsWith("/Waybils/users")) return json({ waybills: [{ waybill_id: "459654070" }] });
+  if (url.endsWith("/Cities/users")) return json({ data: [{ city_id: 77, city_name: "Kohuwala" }] });
+  if (url.endsWith("/Addorders/users")) return json({ status: "success" });
+  return json({ message: "unexpected " + url }, 404);
+};
 const admin = { auth: { uid: "a1" } }, agent = { auth: { uid: "g1" } };
 const moves = () => [...store].filter(([k]) => k.startsWith("stockMoves/")).map(([, v]) => v);
 const rejects = async (p, code) => { try { await p; assert.fail("should reject"); } catch (e) { assert.equal(e.code, code, e.message); } };
@@ -184,6 +202,7 @@ const rejects = async (p, code) => { try { await p; assert.fail("should reject")
   store.set(`leadSourceSecrets/${fb}`, { pageTokens: { P1: "tok" } });
   process.env.META_APP_SECRET = "ms"; process.env.META_VERIFY_TOKEN = "vt";
   let fetched = "";
+  const courierFetch = global.fetch;
   global.fetch = async (u) => { fetched = u; return { ok: true, json: async () => ({ id: "LG1", platform: "ig", form_id: "F1",
     field_data: [{ name: "full_name", values: ["Insta Person"] }, { name: "phone_number", values: ["+94761112233"] }, { name: "which_size?", values: ["XL"] }] }) }; };
   const metaBody = { object: "page", entry: [{ changes: [{ field: "leadgen", value: { leadgen_id: "LG1", page_id: "P1", form_id: "F1" } }] }] };
@@ -196,11 +215,80 @@ const rejects = async (p, code) => { try { await p; assert.fail("should reject")
   const fl = leadBy("94761112233"); assert.deepEqual([fl.name, fl.channel, fl.source, fl.extra.which_size, fl.extra.form_id], ["Insta Person", "instagram", "facebook", "XL", "F1"]);
   const vr = mkRes(); await LS.metaWebhook({ method: "GET", query: { "hub.mode": "subscribe", "hub.verify_token": "vt", "hub.challenge": "123" } }, vr);
   assert.equal(vr.body, "123");
+  global.fetch = courierFetch;
   const evs = [...store].filter(([k]) => k.startsWith("leadEvents/")).map(([, v]) => v.status);
   for (const st of ["created", "duplicate", "test"]) assert.ok(evs.includes(st), st);
   // activity log
   const acts = [...store].filter(([k]) => k.startsWith("activity/")).map(([, v]) => v.action);
   for (const a of ["product.create", "stock.in", "order.verify", "order.cancel", "commission.pay", "leads.reassign", "task.create", "task.done", "announcement.post", "attendance.clockOut"]) assert.ok(acts.includes(a), a);
+  // couriers: status mapping
+  for (const [t, want] of [["Out for Delivery", "OutForDelivery"], ["Delivered", "Delivered"], ["Delivery failed", null], ["Return to client", "Returned"],
+    ["Dispatch to Destination", "Dispatched"], ["Picked up", "Dispatched"], ["Processing", null], ["Undelivered", null]]) assert.equal(mapCourierStatus(t), want, t);
+  // courier settings: secrets kept out of the readable doc, blank secret keeps the old one
+  await rejects(SH.saveCourierConfig({ ...agent, data: { courierId: "transexpress" } }), "permission-denied");
+  await SH.saveCourierConfig({ ...admin, data: { courierId: "transexpress", enabled: true, values: { apiKey: "KEY1", baseUrl: "https://te.test/api/" } } });
+  assert.equal(store.get("courierSecrets/transexpress").apiKey, "KEY1"); assert.equal(store.get("courierConfigs/transexpress").values.apiKey, undefined);
+  assert.equal(store.get("courierConfigs/transexpress").values.baseUrl, "https://te.test/api");
+  await SH.saveCourierConfig({ ...admin, data: { courierId: "transexpress", enabled: true, values: { apiKey: "" } } });
+  assert.equal(store.get("courierSecrets/transexpress").apiKey, "KEY1");
+  const lc = await SH.listCouriers({ ...admin, data: {} });
+  const te = lc.couriers.find((c) => c.id === "transexpress");
+  assert.equal(te.enabled, true); assert.deepEqual(te.missing, []); assert.equal(te.fields.find((f) => f.key === "apiKey").value, "");
+  assert.ok(lc.couriers.find((c) => c.id === "koombiyo").missing.length > 0);
+  await rejects(SH.saveShippingSettings({ ...admin, data: { autoBook: true, defaultCourier: "manual" } }), "invalid-argument");
+  await SH.saveShippingSettings({ ...admin, data: { autoBook: true, defaultCourier: "transexpress", sender: { name: "Shop", phone: "0771234567" } } });
+  // auto-book on verify with Trans Express
+  store.set("leads/L5", { name: "Nimal", phone: "94771234567", assignedTo: "g1", status: "Interested" });
+  const o5 = (await O.createOrder({ ...agent, data: { leadId: "L5", address: "12 Main St", district: "Colombo", city: "Kohuwala", items: [{ productId: id, qty: 1 }] } })).orderId;
+  assert.equal(store.get(`orders/${o5}`).customer.city, "Kohuwala");
+  const v5 = await O.verifyOrder({ ...admin, data: { orderId: o5 } });
+  assert.equal(v5.booking.ok, true, JSON.stringify(v5.booking)); assert.equal(v5.booking.waybill, "TE000001");
+  const sent = JSON.parse(calls.find((c) => c.url.endsWith("single-auto-without-city")).init.body);
+  assert.equal(sent.phone_no, "0771234567"); assert.equal(sent.cod, 12); assert.equal(sent.city, "Kohuwala");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer KEY1");
+  let sh5 = store.get(`orders/${o5}`).shipment;
+  assert.deepEqual([sh5.state, sh5.waybill, sh5.courierName], ["booked", "TE000001", "Trans Express"]);
+  await rejects(SH.bookShipments({ ...admin, data: { orderIds: [o5], courierId: "transexpress" } }).then((r) => { if (!r.results[0].ok) { const e = new Error(r.results[0].error); e.code = "dup"; throw e; } }), "dup");
+  await rejects(O.cancelOrder({ ...admin, data: { orderId: o5 } }), "failed-precondition");
+  // tracking sync moves forward only and stores the courier text
+  trackStatus = "Processing"; await SH.syncShipments({ ...admin, data: {} });
+  assert.equal(store.get(`orders/${o5}`).status, "Verified"); assert.equal(store.get(`orders/${o5}`).shipment.courierStatus, "Processing");
+  trackStatus = "Out for Delivery"; const sy = await SH.syncShipments({ ...admin, data: {} });
+  assert.equal(sy.moved, 1); assert.equal(store.get(`orders/${o5}`).status, "OutForDelivery");
+  trackStatus = "Picked up"; await SH.syncShipments({ ...admin, data: {} }); assert.equal(store.get(`orders/${o5}`).status, "OutForDelivery");
+  trackStatus = "Delivered"; await SH.scheduledShipmentSync();
+  assert.equal(store.get(`orders/${o5}`).status, "Delivered"); assert.equal(store.get(`orders/${o5}`).payment.status, "collected");
+  // webhook by waybill on a closed order is refused
+  await W.threePLWebhook({ method: "POST", get: () => "s", body: { waybill: "TE000001", status: "returned" } }, res); assert.equal(res.code, 409);
+  // courier error is saved on the order, admin fixes the city and retries
+  await SH.saveShippingSettings({ ...admin, data: { autoBook: false, defaultCourier: "transexpress" } });
+  store.set("leads/L6", { name: "Kamal", phone: "0712345678", assignedTo: "g1", status: "Interested" });
+  const o6 = (await O.createOrder({ ...agent, data: { leadId: "L6", address: "x", city: "Nowhere", district: "Colombo", items: [{ productId: id, qty: 1 }] } })).orderId;
+  assert.equal((await O.verifyOrder({ ...admin, data: { orderId: o6 } })).booking, null);
+  const b6 = await SH.bookShipments({ ...admin, data: { orderIds: [o6], courierId: "transexpress" } });
+  assert.equal(b6.booked, 0); assert.match(store.get(`orders/${o6}`).shipment.error, /Invalid city/);
+  await SH.updateShipTo({ ...admin, data: { orderId: o6, city: "Kohuwala", phone2: "0779999999" } });
+  assert.equal((await SH.bookShipments({ ...admin, data: { orderIds: [o6], courierId: "transexpress" } })).booked, 1);
+  await rejects(SH.updateShipTo({ ...admin, data: { orderId: o6, city: "X" } }), "failed-precondition");
+  await SH.clearShipment({ ...admin, data: { orderId: o6 } }); assert.equal(store.get(`orders/${o6}`).shipment, null);
+  // Koombiyo: needs settings, allocates a waybill, maps district and city to ids
+  await rejects(SH.bookShipments({ ...admin, data: { orderIds: [o6], courierId: "koombiyo" } }), "failed-precondition");
+  await SH.saveCourierConfig({ ...admin, data: { courierId: "koombiyo", enabled: true, values: { apiKey: "KB", baseUrl: "https://kb.test/api" } } });
+  const kb = await SH.bookShipments({ ...admin, data: { orderIds: [o6], courierId: "koombiyo" } });
+  assert.equal(kb.results[0].waybill, "459654070", JSON.stringify(kb));
+  const add = new URLSearchParams(calls.filter((c) => c.url.endsWith("/Addorders/users")).pop().init.body);
+  assert.deepEqual([add.get("receiverDistrict"), add.get("receiverCity"), add.get("apikey"), add.get("receiverPhone")], ["5", "77", "KB", "0712345678"]);
+  assert.match(store.get(`orders/${o6}`).trackingUrl, /id=459654070&phone=0712345678/);
+  await SH.clearShipment({ ...admin, data: { orderId: o6 } });
+  // manual courier: typed waybill, status set by the admin, printed marker
+  await SH.saveCourierConfig({ ...admin, data: { courierId: "manual", enabled: true, values: {} } });
+  const mb = await SH.bookShipments({ ...admin, data: { orderIds: [o6], courierId: "manual", courierName: "Domex", waybills: { [o6]: "DX123" } } });
+  assert.equal(mb.booked, 1); assert.deepEqual([store.get(`orders/${o6}`).shipment.courierName, store.get(`orders/${o6}`).shipment.waybill], ["Domex", "DX123"]);
+  await SH.markWaybillsPrinted({ ...admin, data: { orderIds: [o6] } }); assert.ok(store.get(`orders/${o6}`).shipment.printedAt);
+  await SH.setShipmentStatus({ ...admin, data: { orderId: o6, status: "Dispatched" } }); assert.equal(store.get(`orders/${o6}`).status, "Dispatched");
+  await rejects(SH.setShipmentStatus({ ...admin, data: { orderId: o6, status: "Pending" } }), "invalid-argument");
+  await SH.setShipmentStatus({ ...admin, data: { orderId: o6, status: "Returned" } });
+  assert.equal(store.get(`orders/${o6}`).stockDeducted, false);
   console.log(moves().map((m) => `${m.reason}:${m.delta}->${m.balance}`).join(" "));
   console.log("ALL PASS");
 })().catch((e) => { console.error("FAIL", e); process.exit(1); });
