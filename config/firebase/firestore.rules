@@ -57,6 +57,14 @@ service cloud.firestore {
     match /tasks/{id} {
       allow read: if isAdmin() || (isAgent() && resource.data.assignedTo == request.auth.uid);
     }
+    // Courier settings: admins read the non-secret part. API keys live in courierSecrets,
+    // which has no rule, so only Cloud Functions can read them.
+    match /courierConfigs/{id} {
+      allow read: if isAdmin();
+    }
+    match /settings/{id} {
+      allow read: if isAdmin();
+    }
     match /announcements/{id} {
       allow read: if isAdmin() || isAgent();
     }
