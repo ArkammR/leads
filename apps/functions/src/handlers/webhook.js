@@ -4,6 +4,8 @@ const { auditRef, auditData } = require("../lib/audit");
 const { env } = require("../lib/util");
 const { syncLowStockAlert } = require("../services/alerts");
 const { notify } = require("../services/notify");
+const { qtyByProduct, stockMove } = require("../lib/stock");
+const { commissionFor } = require("../lib/commission");
 
 const STATUS_MAP = {
   dispatched: "Dispatched", shipped: "Dispatched",
@@ -29,22 +31,31 @@ exports.threePLWebhook = onRequest(async (req, res) => {
       order = snap.data();
       if (order.status === newStatus) return; // idempotent retry
       if (["Pending"].includes(order.status)) throw new HttpsError("failed-precondition", "order not verified");
-      if (["Delivered", "Returned"].includes(order.status)) throw new HttpsError("failed-precondition", "order closed");
+      if (["Delivered", "Returned", "Cancelled"].includes(order.status)) throw new HttpsError("failed-precondition", "order closed");
       changed = true;
       const update = { status: newStatus };
       if (trackingUrl) update.trackingUrl = trackingUrl;
+      if (newStatus === "Delivered") {
+        // Cash on delivery: the courier now holds the money until it remits it (recordRemittance).
+        update.deliveredAt = FieldValue.serverTimestamp();
+        update.payment = { ...(order.payment || { method: "COD" }), status: "collected", collectedAt: FieldValue.serverTimestamp() };
+        // Commission is fixed at the agent's rate on the day of delivery.
+        const agent = order.agentId ? await tx.get(db.doc(`users/${order.agentId}`)) : null;
+        update.commission = commissionFor(order, agent && agent.exists ? agent.data() : null);
+        update.commissionPaid = false;
+      }
 
-      let prods = [];
       const restock = ["Failed", "Returned"].includes(newStatus) && order.stockDeducted;
-      if (restock) prods = await Promise.all(order.items.map((i) => tx.get(db.doc(`products/${i.productId}`))));
-
       if (restock) {
-        order.items.forEach((i, idx) => {
-          const p = prods[idx];
-          if (!p.exists) return;
-          tx.update(p.ref, { stock: FieldValue.increment(i.qty) });
-          restocked.push({ id: p.id, name: i.name, qty: i.qty });
-        });
+        const need = qtyByProduct(order.items);
+        const prods = await Promise.all(Object.keys(need).map((id) => tx.get(db.doc(`products/${id}`))));
+        for (const p of prods) {
+          if (!p.exists) continue;
+          const balance = (p.data().stock || 0) + need[p.id];
+          tx.update(p.ref, { stock: balance });
+          stockMove(tx, { productId: p.id, name: p.data().name, delta: need[p.id], balance, reason: "return", by: "3pl-webhook", orderId, note: newStatus.toLowerCase() });
+          restocked.push({ id: p.id, name: p.data().name, qty: need[p.id] });
+        }
         update.stockDeducted = false; // guards against double restock
       }
       tx.update(ref, update);

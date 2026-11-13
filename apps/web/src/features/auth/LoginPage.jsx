@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Zap } from "lucide-react";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "../../lib/firebase";
 import { useAuth } from "./AuthContext";
 
 export default function Login({ setupNeeded, blocked }) {
@@ -8,6 +10,15 @@ export default function Login({ setupNeeded, blocked }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState("");
+
+  const reset = async () => {
+    setErr(""); setInfo("");
+    if (!email) return setErr("Enter your email above first.");
+    // Same message either way, so the form doesn't reveal which emails have accounts.
+    try { await sendPasswordResetEmail(auth, email); } catch { /* ignore */ }
+    setInfo("If that email has an account, a reset link is on its way.");
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -37,8 +48,12 @@ export default function Login({ setupNeeded, blocked }) {
             <div className="field"><label>Password</label>
               <input className="input" type="password" required value={pw} onChange={(e) => setPw(e.target.value)} disabled={setupNeeded} /></div>
             {err && <p className="err">{err}</p>}
+            {info && <p className="muted">{info}</p>}
             <button className="btn primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy || setupNeeded}>
               {busy ? "Signing in…" : "Sign in"}
+            </button>
+            <button type="button" className="btn" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} onClick={reset} disabled={setupNeeded}>
+              Forgot password?
             </button>
           </form>
         )}

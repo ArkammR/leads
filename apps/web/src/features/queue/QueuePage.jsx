@@ -5,7 +5,7 @@ import { api, db } from "../../lib/firebase";
 import { useAuth } from "../auth/AuthContext";
 import { useLive } from "../../hooks/useLive";
 import { Badge, Empty, Field, Modal, PageHead, useAction } from "../../components/ui";
-import { AGENT_STATUSES, CALLBACK_STATUSES, fmtDate, money } from "../../lib/constants";
+import { AGENT_STATUSES, CALLBACK_STATUSES, available, fmtDate, money } from "../../lib/constants";
 
 // datetime-local value (local time) for "tomorrow 10:00"
 const defaultCallback = () => {
@@ -22,7 +22,7 @@ export default function Queue() {
     () => query(collection(db, "leads"), where("assignedTo", "==", user.uid), where("isActive", "==", true)),
     [user.uid]
   );
-  const products = useLive(() => collection(db, "products"), []).data.filter((p) => p.isActive && p.stock > 0);
+  const products = useLive(() => collection(db, "products"), []).data.filter((p) => p.isActive && available(p) > 0);
 
   const [cb, setCb] = useState(null);     // {lead, status, when}
   const [ord, setOrd] = useState(null);   // {lead, productId, qty, address}
@@ -100,15 +100,15 @@ export default function Queue() {
       {ord && (
         <Modal title={`New order — ${ord.lead.name}`} onClose={() => setOrd(null)}
           footer={<><button className="btn" onClick={() => setOrd(null)}>Cancel</button>
-            <button className="btn primary" disabled={busy || !ord.productId || !ord.address || ord.qty < 1 || (product && ord.qty > product.stock)} onClick={saveOrder}>Create order</button></>}>
+            <button className="btn primary" disabled={busy || !ord.productId || !ord.address || ord.qty < 1 || (product && ord.qty > available(product))} onClick={saveOrder}>Create order</button></>}>
           {products.length === 0 ? <Empty>No products in stock.</Empty> : (
             <>
               <Field label="Product">
                 <select className="select" value={ord.productId} onChange={(e) => setOrd({ ...ord, productId: e.target.value })}>
-                  {products.map((p) => <option key={p.id} value={p.id}>{p.name} — {money(p.price)} ({p.stock} in stock)</option>)}
+                  {products.map((p) => <option key={p.id} value={p.id}>{p.name} — {money(p.price)} ({available(p)} available)</option>)}
                 </select>
               </Field>
-              <Field label="Quantity"><input className="input" type="number" min="1" max={product?.stock} value={ord.qty} onChange={(e) => setOrd({ ...ord, qty: e.target.value })} /></Field>
+              <Field label="Quantity"><input className="input" type="number" min="1" max={product ? available(product) : undefined} value={ord.qty} onChange={(e) => setOrd({ ...ord, qty: e.target.value })} /></Field>
               <Field label="Delivery address"><textarea className="input" rows="3" value={ord.address} onChange={(e) => setOrd({ ...ord, address: e.target.value })} /></Field>
               {product && <p><b>Total: {money(product.price * (ord.qty || 0))}</b></p>}
             </>

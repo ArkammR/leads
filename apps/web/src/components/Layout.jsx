@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { collection, query, where } from "firebase/firestore";
-import { LayoutDashboard, Users, Package, ShoppingCart, PhoneCall, UserCog, LogOut, Zap } from "lucide-react";
+import { LayoutDashboard, Users, Package, ShoppingCart, PhoneCall, UserCog, LogOut, Zap, Boxes, Wallet, TrendingUp } from "lucide-react";
 import { useAuth } from "../features/auth/AuthContext";
 import { db } from "../lib/firebase";
 import { useLive } from "../hooks/useLive";
@@ -10,11 +10,14 @@ const ADMIN_NAV = [
   { to: "/leads", label: "Leads", icon: Users },
   { to: "/orders", label: "Orders", icon: ShoppingCart },
   { to: "/products", label: "Products", icon: Package },
+  { to: "/inventory", label: "Inventory", icon: Boxes },
+  { to: "/finance", label: "Finance", icon: Wallet },
   { to: "/users", label: "Team", icon: UserCog },
 ];
 const AGENT_NAV = [
   { to: "/", label: "My queue", icon: PhoneCall, end: true },
   { to: "/orders", label: "My orders", icon: ShoppingCart },
+  { to: "/performance", label: "My performance", icon: TrendingUp },
 ];
 
 export default function Layout({ children }) {
