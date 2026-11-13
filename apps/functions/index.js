@@ -4,6 +4,7 @@ Object.assign(
   require("./src/handlers/users"),
   require("./src/handlers/products"),
   require("./src/handlers/leads"),
+  require("./src/handlers/leadSources"),
   require("./src/handlers/orders"),
   require("./src/handlers/alerts"),
   require("./src/handlers/finance"),

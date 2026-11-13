@@ -57,6 +57,13 @@ service cloud.firestore {
     match /tasks/{id} {
       allow read: if isAdmin() || (isAgent() && resource.data.assignedTo == request.auth.uid);
     }
+    // Connected lead platforms. Page access tokens live in leadSourceSecrets, which no client can read.
+    match /leadSources/{id} {
+      allow read: if isAdmin();
+    }
+    match /leadEvents/{id} {
+      allow read: if isAdmin();
+    }
     // Courier settings: admins read the non-secret part. API keys live in courierSecrets,
     // which has no rule, so only Cloud Functions can read them.
     match /courierConfigs/{id} {

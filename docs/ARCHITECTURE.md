@@ -32,7 +32,11 @@ Rule of thumb: a feature folder owns its pages and feature-only helpers; anythin
 | Collection | Key fields |
 |---|---|
 | `users/{uid}` | name, email, role (`admin`\|`agent`), isActive, commission{type `flat`\|`percent`, value} |
-| `leads/{id}` | name, phone (digits), email, status, assignedTo, callbackAt, isActive · sub: `history` |
+| `leads/{id}` | name, phone (international digits, e.g. 94771234567), email, status, assignedTo (null if no agent was active), callbackAt, isActive, source (`csv`\|`facebook`\|`google`\|`tiktok`\|`website`\|`whatsapp`), sourceId, channel (`instagram`…), externalId, extra{form answers}, enquiries, lastEnquiryAt · sub: `history` |
+| `leadSources/{id}` | type, name, mode (`roundRobin`\|`manual`), agentId, isActive, key (webhook secret), pages[{id,name,subscribed}], pageIds[], formIds[], waPhoneNumberId, stats{received,created,duplicates,rejected}, lastLeadAt (admin read) |
+| `leadSourceSecrets/{id}` | pageTokens{pageId: token} (Facebook Page tokens; no client access) |
+| `leadEvents/{id}` | sourceId, source, status (`created`\|`duplicate`\|`rejected`\|`test`\|`error`), name, phone, reason, leadId, assignedTo, createdAt |
+| `oauthStates/{state}` | uid, sourceId, expiresAt (10-minute Facebook sign-in state; no client access) |
 | `products/{id}` | name, sku, price, stock (on hand), reserved (held by Pending orders), minStockLevel, isActive |
 | `productCosts/{productId}` | costPrice (weighted average; admin-only because agents can read `products`) |
 | `stockMoves/{id}` | productId, name, delta, balance, reason (`opening`\|`purchase`\|`adjustment`\|`sale`\|`return`), by, orderId, unitCost, supplier, note, createdAt |
@@ -54,6 +58,14 @@ Rule of thumb: a feature folder owns its pages and feature-only helpers; anythin
 `users/{uid}` also holds `presence {state, day, since}` (live clock state) and `announcementsSeenAt` (read marker).
 
 `history` entries: `userId, previousStatus, newStatus, note, timestamp`. Clients cannot write anywhere; only functions (Admin SDK) do, so history is tamper-proof from the app.
+
+## Lead intake
+Every lead goes through `lib/ingest.js` (`ingestLeads`): normalise phone/email → skip duplicates in the batch and against existing leads (both phone formats) → assign (round-robin cursor reserved in a transaction, or one agent) → write with `source` tag and a history entry.
+- **Manual**: Leads page, CSV or `.xlsx` (parsed in the browser, headers matched loosely) → `importLeads`.
+- **Webhook per source** `POST /webhook/leads/<sourceId>?key=<key>` (`leadsWebhook`): website forms, Zapier/Make, TikTok, Google Ads lead forms (`google_key` in body; `is_test` leads are logged, not saved), Twilio WhatsApp inbound (replies with empty TwiML).
+- **Meta** `GET/POST /webhook/meta` (`metaWebhook`, signed with `META_APP_SECRET`): Page `leadgen` events → lead fetched from the Graph API with the Page token; WhatsApp Cloud API `messages` matched by `waPhoneNumberId`.
+- **Connect Facebook**: `startMetaConnect` → Facebook Login → `/oauth/meta` (`metaOAuth`) stores Page tokens in `leadSourceSecrets` and subscribes each Page to `leadgen`. No passwords are stored anywhere.
+Platform leads never fail on "no active agent": they are saved unassigned and show under the Unassigned filter. A known customer who submits again gets a history note (`enquired again via …`) instead of a duplicate. Everything received is listed on the Lead sources page (`leadEvents`).
 
 ## Order lifecycle
 `Pending` (agent; stock reserved) → `Verified` (admin; reservation turned into a sale, stock deducted, customer notified) → `Dispatched` → `OutForDelivery` (customer notified) → `Delivered`
