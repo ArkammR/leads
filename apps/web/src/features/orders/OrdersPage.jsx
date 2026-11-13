@@ -3,9 +3,9 @@ import { collection } from "firebase/firestore";
 import { Ban, CheckCircle2, History } from "lucide-react";
 import { api, db } from "../../lib/firebase";
 import { useLive } from "../../hooks/useLive";
-import { Badge, Empty, Field, Modal, PageHead, useAction, useToast } from "../../components/ui";
+import { Badge, Empty, ExportButton, Field, Modal, PageHead, useAction, useToast } from "../../components/ui";
 import HistoryModal from "../../components/HistoryModal";
-import { fmtDate, money } from "../../lib/constants";
+import { fmtDate, money, payStatus, ts } from "../../lib/constants";
 
 export default function Orders() {
   const run = useAction();
@@ -41,6 +41,12 @@ export default function Orders() {
           <option value="">All statuses</option>
           {statuses.map((s) => <option key={s}>{s}</option>)}
         </select>
+        <ExportButton name="orders" rows={rows} columns={[
+          ["Order", (o) => o.id], ["Created", (o) => ts(o.createdAt)], ["Status", (o) => o.status], ["Agent", (o) => users.find((u) => u.id === o.agentId)?.name || ""],
+          ["Customer", (o) => o.customer.name], ["Phone", (o) => o.customer.phone], ["Address", (o) => o.customer.address],
+          ["Items", (o) => o.items.map((i) => `${i.name} x ${i.qty}`).join("; ")], ["Total", (o) => o.total], ["Cost", (o) => o.costTotal ?? ""],
+          ["Payment", (o) => payStatus(o)], ["Delivered", (o) => ts(o.deliveredAt)], ["Commission", (o) => o.commission ?? ""],
+        ]} />
       </PageHead>
       <div className="card tablewrap">
         {!loading && rows.length === 0 ? <Empty>No orders yet.</Empty> : (

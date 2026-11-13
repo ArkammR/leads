@@ -45,5 +45,20 @@ service cloud.firestore {
     match /notifications/{id} {
       allow read: if isAdmin();
     }
+    match /activity/{id} {
+      allow read: if isAdmin();
+    }
+    match /attendance/{id} {
+      allow read: if isAdmin() || (isAgent() && resource.data.userId == request.auth.uid);
+    }
+    match /targets/{id} {
+      allow read: if isAdmin() || (isAgent() && resource.data.agentId == request.auth.uid);
+    }
+    match /tasks/{id} {
+      allow read: if isAdmin() || (isAgent() && resource.data.assignedTo == request.auth.uid);
+    }
+    match /announcements/{id} {
+      allow read: if isAdmin() || isAgent();
+    }
   }
 }

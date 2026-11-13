@@ -56,3 +56,17 @@ export function agentStats(orders, range) {
     unpaid: orders.filter((o) => o.status === "Delivered" && o.commission > 0 && !o.commissionPaid).reduce((s, o) => s + o.commission, 0),
   };
 }
+
+// Minutes → "7h 05m".
+export const fmtMins = (m) => { const n = Math.max(0, Math.round(m || 0)); return `${Math.floor(n / 60)}h ${String(n % 60).padStart(2, "0")}m`; };
+// Worked minutes for an attendance doc, counting a running session up to now.
+export const workedMins = (a, now = Date.now()) => (a.sessions || []).reduce((s, x) => s + ((x.out ?? now) - x.in), 0) / 60000;
+export const breakMins = (a, now = Date.now()) => (a.breaks || []).reduce((s, x) => s + ((x.end ?? now) - x.start), 0) / 60000;
+export const fmtTime = (ms) => (ms ? new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—");
+export const PRESENCE = { in: ["Working", "green"], break: ["On break", "amber"], out: ["Off", "gray"] };
+export const PRIORITY_TONE = { high: "red", normal: "blue", low: "gray" };
+// "YYYY-MM" for the current local month.
+export const thisMonth = () => ymd(new Date()).slice(0, 7);
+// ["YYYY-MM-01", "YYYY-MM-<last>"] for a "YYYY-MM" month, for agentStats/inRange.
+export const monthRange = (m) => { const [y, mo] = m.split("-").map(Number); return [ymd(new Date(y, mo - 1, 1)), ymd(new Date(y, mo, 0))]; };
+export const TARGET_KEYS = [["orders", "Orders created"], ["delivered", "Delivered"], ["revenue", "Revenue"]];

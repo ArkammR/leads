@@ -8,6 +8,10 @@ import PerformancePage from "../features/performance/PerformancePage";
 import ProductsPage from "../features/products/ProductsPage";
 import TeamPage from "../features/team/TeamPage";
 import QueuePage from "../features/queue/QueuePage";
+import AttendancePage from "../features/attendance/AttendancePage";
+import TasksPage from "../features/tasks/TasksPage";
+import AnnouncementsPage from "../features/announcements/AnnouncementsPage";
+import ActivityPage from "../features/activity/ActivityPage";
 
 // Role-scoped route tables. (Firestore rules and Cloud Functions enforce access; this only shapes the UI.)
 export const adminRoutes = [
@@ -18,10 +22,17 @@ export const adminRoutes = [
   { path: "/inventory", element: <InventoryPage /> },
   { path: "/finance", element: <FinancePage /> },
   { path: "/users", element: <TeamPage /> },
+  { path: "/attendance", element: <AttendancePage /> },
+  { path: "/tasks", element: <TasksPage /> },
+  { path: "/announcements", element: <AnnouncementsPage /> },
+  { path: "/activity", element: <ActivityPage /> },
 ];
 
 export const agentRoutes = [
   { path: "/", element: <QueuePage /> },
   { path: "/orders", element: <MyOrdersPage /> },
+  { path: "/tasks", element: <TasksPage /> },
   { path: "/performance", element: <PerformancePage /> },
+  { path: "/attendance", element: <AttendancePage /> },
+  { path: "/announcements", element: <AnnouncementsPage /> },
 ];

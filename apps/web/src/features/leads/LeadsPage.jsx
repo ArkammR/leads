@@ -3,9 +3,9 @@ import { collection } from "firebase/firestore";
 import { History, Search, Upload, UserRoundCog } from "lucide-react";
 import { api, db } from "../../lib/firebase";
 import { useLive } from "../../hooks/useLive";
-import { Badge, Empty, Field, Modal, PageHead, useAction, useToast } from "../../components/ui";
+import { Badge, Empty, ExportButton, Field, Modal, PageHead, useAction, useToast } from "../../components/ui";
 import HistoryModal from "../../components/HistoryModal";
-import { fmtDate } from "../../lib/constants";
+import { fmtDate, ts } from "../../lib/constants";
 import { parseCsv } from "./parseCsv";
 
 export default function Leads() {
@@ -62,6 +62,11 @@ export default function Leads() {
   return (
     <>
       <PageHead title="Leads" sub="Upload a CSV (name, phone, email). Duplicates are skipped automatically.">
+        <ExportButton name="leads" rows={rows} columns={[
+          ["Name", (l) => l.name], ["Phone", (l) => l.phone], ["Email", (l) => l.email], ["Status", (l) => l.status],
+          ["Agent", (l) => uname(l.assignedTo)], ["Callback", (l) => ts(l.callbackAt)], ["Last contacted", (l) => ts(l.lastContactedAt)],
+          ["Created", (l) => ts(l.createdAt)], ["Active", (l) => (l.isActive === false ? "no" : "yes")],
+        ]} />
         <label className="btn primary" style={{ cursor: "pointer" }}>
           <Upload size={16} />Import CSV
           <input type="file" accept=".csv,text/csv" hidden onChange={(e) => { pick(e); e.target.value = ""; }} />

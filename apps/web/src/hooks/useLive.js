@@ -16,3 +16,15 @@ export function useLive(makeQuery, deps = []) {
   }, deps);
   return state;
 }
+
+// Live single document (null while loading or missing). `makeRef` returns a doc ref (or null to skip).
+export function useLiveDoc(makeRef, deps = []) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    const r = makeRef();
+    if (!r) { setData(null); return; }
+    return onSnapshot(r, (s) => setData(s.exists() ? { id: s.id, ...s.data() } : null), () => setData(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return data;
+}

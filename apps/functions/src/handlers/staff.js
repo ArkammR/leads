@@ -1,15 +1,18 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { db, FieldValue, Timestamp } = require("../lib/firebase");
 const { requireAdmin } = require("../lib/auth");
+const { logActivity } = require("../lib/activity");
 
 exports.setCommission = onCall(async (req) => {
-  await requireAdmin(req.auth);
+  const u = await requireAdmin(req.auth);
   const { userId, type } = req.data;
   const value = Number(req.data.value);
   if (!["flat", "percent"].includes(type) || !(value >= 0) || (type === "percent" && value > 100)) throw new HttpsError("invalid-argument", "Bad commission.");
   const ref = db.doc(`users/${userId}`);
-  if (!(await ref.get()).exists) throw new HttpsError("not-found", "User not found.");
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "User not found.");
   await ref.update({ commission: { type, value } });
+  await logActivity(u, "commission.set", `${snap.data().name}: ${type === "percent" ? `${value}%` : `${value} flat`}`, { type: "user", id: userId });
   return { ok: true };
 });
 
@@ -33,5 +36,6 @@ exports.payCommissions = onCall(async (req) => {
     });
     return { amount, orders: snaps.length };
   });
+  await logActivity(u, "commission.pay", `${agent.data().name}: ${result.amount} for ${result.orders} orders`, { type: "user", id: agentId });
   return result;
 });

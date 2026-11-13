@@ -1,6 +1,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { db, FieldValue, Timestamp } = require("../lib/firebase");
 const { getUser, requireAdmin } = require("../lib/auth");
+const { logActivity } = require("../lib/activity");
 const { auditRef, auditData } = require("../lib/audit");
 const { normPhone, normEmail, chunks } = require("../lib/util");
 const { LEAD_STATUSES, CALLBACK_STATUSES } = require("../constants");
@@ -59,6 +60,7 @@ exports.importLeads = onCall(async (req) => {
     await batch.commit();
   }
   if (mode === "roundRobin") await rrRef.set({ next: cursor % agents.length });
+  await logActivity(admin_, "leads.import", `${fresh.length} leads imported (${mode}), ${duplicates.length} skipped`);
   return { created: fresh.length, duplicates };
 });
 
@@ -102,5 +104,6 @@ exports.reassignLeads = onCall(async (req) => {
     }
     await batch.commit();
   }
+  await logActivity(u, "leads.reassign", `${moved} leads → ${a.data().name}`, { type: "user", id: agentId });
   return { moved };
 });
